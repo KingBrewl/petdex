@@ -47,7 +47,7 @@ local facing = math.rad(-60) -- 0 faces the camera; this is a three-quarter view
 local camScale = 1.05 -- PlayerModel:SetCamDistanceScale; > 1 pulls the camera back
 -- Model offset for PlayerModel:SetPosition(0, offsetY, offsetZ): Y is
 -- sideways, Z is up and down (signs to be confirmed in game).
-local offsetY, offsetZ = -0.4, 0 -- -0.4 centred Broken Tooth in game
+local offsetY, offsetZ = -0.3, -0.2 -- centred Broken Tooth in game
 local NUDGE = 0.1
 local lightIndex, animIndex, spinning = 1, 1, false
 local dragging, dragX
