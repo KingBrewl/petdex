@@ -2,12 +2,13 @@
 --
 -- A fixed camera distance and offset tuned on a lion (Broken Tooth) left a
 -- hunter's bear huge, cropped and off centre, so each model must be fitted
--- on its own. This round compares two auto-fit methods, side by side:
---   PlayerModel  UseModelCenterToTransform(true) to turn around the middle,
---                SetModelScale to normalise the size measured from a hidden
---                ModelScene actor's bounding box
---   ModelScene   SetUseCenterForOrigin on the actor, camera placed from the
---                bounding box; the silhouette is retried with the light off
+-- on its own. Round three showed ModelScene framing every beast well from
+-- its bounding box but still unable to draw a silhouette, while PlayerModel
+-- draws silhouettes but its own camera framed by load path and model. This
+-- round gives PlayerModel a custom camera placed exactly like the ModelScene
+-- one (model centred at the origin via UseModelCenterToTransform, camera
+-- distance from the size a hidden ModelScene actor measures). If the columns
+-- match, PlayerModel can do everything.
 -- Rows: Tamed (soft light, spotlight, rarity glow) and Unknown (silhouette).
 --
 -- /petdex lab                 your target
@@ -18,11 +19,10 @@ local _, ns = ...
 local STAGE_SIZE = 220
 local GAP = 10
 local LOAD_DELAY = 1 -- seconds for a model to load before the next step
-local TARGET_SIZE = 2.5 -- PlayerModel: scale every beast to this many yards
 local FIT = 1.5 -- ModelScene: camera distance per yard of model size
 
 local COLUMNS = {
-    { key = "player", label = "PlayerModel: centred + scaled" },
+    { key = "player", label = "PlayerModel: custom camera" },
     { key = "scene", label = "ModelScene: centred + fitted" },
 }
 local ROWS = {
@@ -43,8 +43,7 @@ local lab, measurer, measureActor
 local stages = {} -- { column, state, frame, actor }
 local source -- { kind = "display"|"npc"|"unit", id | unit }
 local facing = math.rad(-60) -- 0 faces the camera; this is a three-quarter view
-local camScale = 1.05 -- PlayerModel:SetCamDistanceScale, picked in game
-local zoom = 1 -- ModelScene multiplier on the fitted distance
+local zoom = 1 -- multiplier on the fitted camera distance, both columns
 local offsetY, offsetZ = 0, 0 -- PlayerModel:SetPosition nudge; - is left / down
 local NUDGE = 0.1
 local measured -- { size, centerZ } from the bounding box
@@ -126,10 +125,11 @@ local function SetModelLight(model, ambient, diffuse)
     pcall(model.SetLight, model, true, false, 0, -0.7, -0.7, ambient, 1, 1, 1, diffuse, 1, 1, 1)
 end
 
-local function LoadPlayerModel(model)
+-- displayID, once known, gives the same load path as the ModelScene column.
+local function LoadPlayerModel(model, displayID)
     pcall(model.ClearModel, model)
-    if source.kind == "display" then
-        pcall(model.SetDisplayInfo, model, source.id)
+    if displayID then
+        pcall(model.SetDisplayInfo, model, displayID)
     elseif source.kind == "npc" then
         pcall(model.SetCreature, model, source.id)
     else
@@ -137,14 +137,22 @@ local function LoadPlayerModel(model)
     end
 end
 
+-- Round three: the model's own camera framed differently by load path and
+-- model, so take the camera over and place it like the ModelScene one:
+-- model centred at the origin, camera on +X looking at it.
+local function PlacePlayerCamera(model)
+    pcall(model.UseModelCenterToTransform, model, true)
+    pcall(model.SetPosition, model, 0, offsetY, offsetZ)
+    if not measured then return end
+    pcall(model.MakeCurrentCameraCustom, model)
+    local distance = measured.size * FIT * zoom
+    pcall(model.SetCameraPosition, model, distance, 0, 0)
+    pcall(model.SetCameraTarget, model, 0, 0, 0)
+end
+
 local function StylePlayerModel(stage)
     local model = stage.frame
-    pcall(model.UseModelCenterToTransform, model, true)
-    if measured then
-        pcall(model.SetModelScale, model, TARGET_SIZE / measured.size)
-    end
-    pcall(model.SetCamDistanceScale, model, camScale)
-    pcall(model.SetPosition, model, 0, offsetY, offsetZ)
+    PlacePlayerCamera(model)
     pcall(model.SetFacing, model, facing)
     if stage.state == "unknown" then
         SetModelLight(model, 0, 0)
@@ -241,14 +249,13 @@ local function Report(displayID)
     ns:Print(("Model lab: %s%s."):format(
         source.kind == "unit" and "target" or (source.kind .. " " .. source.id),
         displayID and (", display ID " .. displayID) or ""))
-    print(("  Measured size: %s"):format(measured
-        and ("%.2f yards, PlayerModel scale %.2f"):format(measured.size, TARGET_SIZE / measured.size)
+    print(("  Measured size: %s"):format(measured and ("%.2f yards"):format(measured.size)
         or "|cffff4040none (no bounding box)|r"))
-    print(("  PlayerModel:UseModelCenterToTransform %s, SetModelScale %s"):format(
-        Try(player, "UseModelCenterToTransform", true), Try(player, "SetModelScale", 1)))
-    print(("  Actor:SetUseCenterForOrigin %s"):format(Try(scene, "SetUseCenterForOrigin", true, true, true)))
-    print("  Which column frames the beast whole and centred, and does it stay centred while it spins?")
-    StyleAll() -- the Try calls above reset the model scale
+    print(("  PlayerModel: MakeCurrentCameraCustom %s, SetCameraPosition %s, SetCameraTarget %s"):format(
+        Try(player, "MakeCurrentCameraCustom"), Try(player, "SetCameraPosition", 1, 0, 0),
+        Try(player, "SetCameraTarget", 0, 0, 0)))
+    print("  Does the left column now match the right one's framing for every beast?")
+    StyleAll() -- the Try calls above moved the camera
 end
 
 local function Load()
@@ -256,7 +263,7 @@ local function Load()
     local directID = source.kind == "display" and source.id or nil
     for _, stage in ipairs(stages) do
         if stage.column == "player" then
-            LoadPlayerModel(stage.frame)
+            LoadPlayerModel(stage.frame, directID)
         end
     end
     StyleAll()
@@ -269,6 +276,15 @@ local function Load()
         for _, stage in ipairs(stages) do
             if stage.actor then
                 LoadActor(stage.actor, displayID)
+            end
+        end
+        -- Reload the PlayerModels by display ID too, so both columns show the
+        -- same look loaded the same way.
+        if displayID and not directID then
+            for _, stage in ipairs(stages) do
+                if stage.column == "player" then
+                    LoadPlayerModel(stage.frame, displayID)
+                end
             end
         end
         C_Timer.After(LOAD_DELAY, function()
@@ -293,10 +309,9 @@ local function ApplyFacing()
 end
 
 local function ChangeDistance(step)
-    camScale = math.max(0.4, math.min(4, camScale + step))
     zoom = math.max(0.4, math.min(4, zoom + step))
     StyleAll()
-    ns:Print(("PlayerModel camera distance %.2f, ModelScene zoom %.2f"):format(camScale, zoom))
+    ns:Print(("Camera distance x%.2f (both columns)"):format(zoom))
 end
 
 local function Nudge(dy, dz)
