@@ -11,4 +11,5 @@ Collection.lua
 Tracking.lua
 Tooltip.lua
 Probe.lua
+ModelLab.lua
 Slash.lua

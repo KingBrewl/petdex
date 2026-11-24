@@ -20,6 +20,7 @@ New-Item -ItemType Junction `
 | `Tracking.lua` | Sightings, tame detection, active pet and stable backfill |
 | `Tooltip.lua` | Collection status on beast tooltips |
 | `Probe.lua` | Debug probe: can the client read a unit's model (`/petdex probe`) |
+| `ModelLab.lua` | Debug window: a beast in each dex state, plus turning, zoom, animations and a frame-rate test (`/petdex lab`) |
 | `Slash.lua` | `/petdex` (`/pdex`) commands |
 
 ## Forever client notes

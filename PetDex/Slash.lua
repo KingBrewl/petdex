@@ -27,6 +27,7 @@ local function PrintHelp()
     print("  /petdex - collection summary")
     print("  /petdex tooltip | announce | debug - toggle a setting")
     print("  /petdex probe [unit] - debug: test reading a unit's model (default target)")
+    print("  /petdex lab [displayID | npc:<id>] - debug: model lab window (default target)")
     print("  /petdex reset - wipe all collection data")
 end
 
@@ -38,6 +39,8 @@ SlashCmdList.PETDEX = function(message)
         PrintStatus()
     elseif command == "probe" then
         ns:ProbeModel(argument)
+    elseif command == "lab" then
+        ns:OpenModelLab(argument)
     elseif TOGGLES[command] then
         local settings = ns.db.settings
         settings[command] = not settings[command]
