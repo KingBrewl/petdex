@@ -45,6 +45,10 @@ local stages = {} -- { state, model }
 local source -- { kind = "display"|"npc"|"unit", id | unit }
 local facing = math.rad(-60) -- 0 faces the camera; this is a three-quarter view
 local camScale = 1.05 -- PlayerModel:SetCamDistanceScale; > 1 pulls the camera back
+-- Model offset for PlayerModel:SetPosition(0, offsetY, offsetZ): Y is
+-- sideways, Z is up and down (signs to be confirmed in game).
+local offsetY, offsetZ = 0, 0
+local NUDGE = 0.1
 local lightIndex, animIndex, spinning = 1, 1, false
 local dragging, dragX
 
@@ -139,6 +143,7 @@ end
 local function StyleModel(stage)
     local model = stage.model
     pcall(model.SetCamDistanceScale, model, camScale)
+    pcall(model.SetPosition, model, 0, offsetY, offsetZ)
     pcall(model.SetFacing, model, facing)
     if stage.state == "unknown" then
         SetModelLight(model, 0, 0)
@@ -193,6 +198,12 @@ local function ChangeCamera(delta)
     camScale = math.max(0.5, math.min(4, camScale + delta))
     StyleAll()
     ns:Print(("Camera distance %.2f"):format(camScale))
+end
+
+local function Nudge(dy, dz)
+    offsetY, offsetZ = offsetY + dy, offsetZ + dz
+    StyleAll()
+    ns:Print(("Model offset: sideways %.2f, up/down %.2f"):format(offsetY, offsetZ))
 end
 
 local function NextLight()
@@ -305,7 +316,7 @@ end
 local function CreateLab()
     local width = GAP + #STATES * (STAGE_SIZE + GAP)
     lab = CreateFrame("Frame", "PetDexModelLab", UIParent)
-    lab:SetSize(width, 40 + STAGE_SIZE + 26 + 44)
+    lab:SetSize(width, 40 + STAGE_SIZE + 26 + 72)
     lab:SetPoint("CENTER")
     lab:SetFrameStrata("DIALOG")
     lab:SetMovable(true)
@@ -335,6 +346,7 @@ local function CreateLab()
     end
 
     local previous
+    local rowBottom = 40
     local function AddButton(text, buttonWidth, onClick)
         local button = CreateFrame("Button", nil, lab, "UIPanelButtonTemplate")
         button:SetSize(buttonWidth, 24)
@@ -342,7 +354,7 @@ local function CreateLab()
         if previous then
             button:SetPoint("LEFT", previous, "RIGHT", 4, 0)
         else
-            button:SetPoint("BOTTOMLEFT", GAP, 12)
+            button:SetPoint("BOTTOMLEFT", GAP, rowBottom)
         end
         button:SetScript("OnClick", onClick)
         previous = button
@@ -356,6 +368,13 @@ local function CreateLab()
     AddButton("Animation", 80, NextAnimation)
     AddButton("Grid x" .. GRID_COUNT, 72, ToggleGrid)
     AddButton("Reload", 64, Load)
+
+    previous, rowBottom = nil, 12
+    AddButton("Move left", 80, function() Nudge(-NUDGE, 0) end)
+    AddButton("Move right", 84, function() Nudge(NUDGE, 0) end)
+    AddButton("Move up", 72, function() Nudge(0, NUDGE) end)
+    AddButton("Move down", 84, function() Nudge(0, -NUDGE) end)
+    AddButton("Reset position", 110, function() Nudge(-offsetY, -offsetZ) end)
 
     lab:SetScript("OnUpdate", function(_, elapsed)
         local changed = false
