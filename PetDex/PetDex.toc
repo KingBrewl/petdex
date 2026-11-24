@@ -10,6 +10,8 @@ Data\Beasts.lua
 Collection.lua
 Tracking.lua
 Tooltip.lua
+BeastStage.lua
+DexWindow.lua
 Probe.lua
 ModelLab.lua
 Slash.lua

@@ -24,7 +24,8 @@ end
 
 local function PrintHelp()
     ns:Print("v" .. ns.version .. " commands:")
-    print("  /petdex - collection summary")
+    print("  /petdex - open or close the dex")
+    print("  /petdex status - collection summary in chat")
     print("  /petdex tooltip | announce | debug - toggle a setting")
     print("  /petdex probe [unit] - debug: test reading a unit's model (default target)")
     print("  /petdex lab [displayID | npc:<id>] - debug: model lab window (default target)")
@@ -35,7 +36,9 @@ SLASH_PETDEX1 = "/petdex"
 SLASH_PETDEX2 = "/pdex"
 SlashCmdList.PETDEX = function(message)
     local command, argument = message:lower():match("^%s*(%S*)%s*(.-)%s*$")
-    if command == "" or command == "status" then
+    if command == "" then
+        ns:ToggleDex()
+    elseif command == "status" then
         PrintStatus()
     elseif command == "probe" then
         ns:ProbeModel(argument)

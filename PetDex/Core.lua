@@ -80,6 +80,9 @@ end)
 --                         zones = { [zoneName] = true }, rarity, verified }
 --   chars       [charKey] = { pets = { [petGUID] = npcID },
 --                             unidentified = { stable pets we couldn't match } }
+--   modelCache  learned while drawing models, so each is only measured once:
+--               sizes      [displayID] = largest bounding-box side, in yards
+--               npcDisplay [npcID] = displayID the client loaded for it
 ---------------------------------------------------------------------------
 local DB_VERSION = 1
 local DEFAULT_SETTINGS = {
@@ -101,6 +104,9 @@ local function InitDB()
     db.beasts = db.beasts or {}
     db.discovered = db.discovered or {}
     db.chars = db.chars or {}
+    db.modelCache = db.modelCache or {}
+    db.modelCache.sizes = db.modelCache.sizes or {}
+    db.modelCache.npcDisplay = db.modelCache.npcDisplay or {}
     ns.db = db
 end
 

@@ -18,7 +18,8 @@ for npcID, beast in pairs(ns.Beasts) do
     for _, lookID in ipairs(beast.looks or {}) do
         lookNPCs[lookID] = lookNPCs[lookID] or {}
         table.insert(lookNPCs[lookID], npcID)
-        ns.Looks[lookID] = ns.Looks[lookID] or { label = beast.name, family = beast.family }
+        ns.Looks[lookID] = ns.Looks[lookID]
+            or { label = beast.name, family = beast.family, model = beast.model, spirit = beast.spirit }
     end
 end
 
@@ -92,7 +93,7 @@ function ns:GetLookNPCs(lookID)
     return lookNPCs[lookID] or {}
 end
 
--- { label, family, rarity, standIn } or nil
+-- { label, family, model, spirit, rarity, standIn } or nil
 function ns:GetLook(lookID)
     local npcID = StandInNPC(lookID)
     if not npcID then
@@ -100,7 +101,8 @@ function ns:GetLook(lookID)
     end
     local beast = self:GetBeast(npcID)
     if beast then
-        return { label = beast.name, family = beast.family, rarity = beast.rarity or "common", standIn = true }
+        return { label = beast.name, family = beast.family, model = beast.model, spirit = beast.spirit,
+            rarity = beast.rarity or "common", standIn = true }
     end
 end
 
@@ -156,6 +158,85 @@ function ns:ForEachLook(fn)
 end
 
 ---------------------------------------------------------------------------
+-- Dex view: families -> model groups -> looks
+---------------------------------------------------------------------------
+local RARITY_ORDER = { unique = 1, rare = 2, common = 3 }
+
+-- Everything the dex shows about one look. npcID is a representative NPC
+-- (used to load the model when there's no display ID, and for zone/level).
+function ns:GetLookInfo(lookID)
+    local look = self:GetLook(lookID)
+    if not look then return end
+    local npcID = self:GetLookNPCs(lookID)[1]
+    local beast = npcID and self:GetBeast(npcID)
+    return {
+        lookID = lookID,
+        label = look.label,
+        family = look.family or "Unknown",
+        model = look.model or (beast and beast.model) or "Unsorted",
+        rarity = look.rarity or "common",
+        spirit = look.spirit,
+        displayID = look.displayID or (type(lookID) == "number" and lookID or nil),
+        npcID = npcID,
+        beast = beast,
+        record = npcID and self.db.beasts[npcID],
+        status = self:GetLookStatus(lookID),
+    }
+end
+
+local function CountInto(group, info)
+    group.total = group.total + 1
+    if info.status == "tamed" then group.tamed = group.tamed + 1 end
+end
+
+-- Sorted list of families: { name, total, tamed, models = { { name, total,
+-- tamed, looks = { lookInfo, ... } }, ... } }. Looks sort rarest first.
+function ns:GetDexFamilies()
+    local byName = {}
+    self:ForEachLook(function(lookID)
+        local info = self:GetLookInfo(lookID)
+        if not info then return end
+        local family = byName[info.family]
+        if not family then
+            family = { name = info.family, total = 0, tamed = 0, models = {}, byModel = {} }
+            byName[info.family] = family
+        end
+        local group = family.byModel[info.model]
+        if not group then
+            group = { name = info.model, total = 0, tamed = 0, looks = {} }
+            family.byModel[info.model] = group
+            table.insert(family.models, group)
+        end
+        table.insert(group.looks, info)
+        CountInto(group, info)
+        CountInto(family, info)
+    end)
+
+    local families = {}
+    for _, family in pairs(byName) do
+        family.byModel = nil
+        table.sort(family.models, function(a, b) return a.name < b.name end)
+        for _, group in ipairs(family.models) do
+            table.sort(group.looks, function(a, b)
+                local ra, rb = RARITY_ORDER[a.rarity] or 9, RARITY_ORDER[b.rarity] or 9
+                if ra ~= rb then return ra < rb end
+                return a.label < b.label
+            end)
+        end
+        table.insert(families, family)
+    end
+    table.sort(families, function(a, b) return a.name < b.name end)
+    return families
+end
+
+-- The dex window sets this to refresh itself when the collection changes.
+local function NotifyChanged()
+    if ns.OnCollectionChanged then
+        ns:OnCollectionChanged()
+    end
+end
+
+---------------------------------------------------------------------------
 -- Recording
 ---------------------------------------------------------------------------
 
@@ -200,7 +281,8 @@ function ns:MarkSeen(npcID, info)
     self:Discover(npcID, info)
     local record = self:GetRecord(npcID, true)
     local now = time()
-    if not record.seen then
+    local firstSighting = not record.seen
+    if firstSighting then
         record.seen = now
         if self:IsRare(npcID) and self.db.settings.announce then
             self:Print("First sighting of a rare:", "|cff0070dd" .. info.name .. "|r")
@@ -209,6 +291,9 @@ function ns:MarkSeen(npcID, info)
     record.lastSeen = now
     record.lastZone = info.zone
     ConfirmLook(record, info.lookID, "seen")
+    if firstSighting then
+        NotifyChanged()
+    end
 end
 
 local function TamedLooks(npcID)
@@ -248,6 +333,9 @@ function ns:MarkTamed(npcID, info, source)
     if isNew and self.db.settings.announce then
         local stats = self:GetStats()
         self:Print(("Added %s to your collection! (%d/%d looks)"):format(info.name, stats.tamed, stats.total))
+    end
+    if isNew then
+        NotifyChanged()
     end
     return isNew
 end
