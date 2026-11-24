@@ -1,217 +1,183 @@
--- Model lab (debug): can this client render the dex the way the mockup does?
+-- Model lab (debug): a prototype of the dex "stage" for tuning by eye.
 --
--- Opens a window showing one beast in each state the dex needs, drawn with
--- both of the client's model widgets:
---   Tamed               normal lighting
---   Seen                desaturated / dimly lit
---   Unknown (fog)       black fog over the model, for a silhouette
---   Unknown (no light)  all lights at zero, the other way to get a silhouette
--- Rows: PlayerModel (the classic widget) and ModelScene + actor (the newer
--- one). Buttons test turning, drag-to-turn, zoom, animations, and how the
--- frame rate holds up with a grid of models.
+-- Shows one beast in each dex state on a PlayerModel (the widget that passed
+-- the first lab round on Forever; ModelScene couldn't do silhouettes and fog
+-- had no effect):
+--   Tamed     lit with the chosen light preset, rarity glow on the ground
+--   Seen      SetDesaturation(1), same light
+--   Unknown   every light at zero (black silhouette) against a back glow
+-- Buttons tune the framing (camera distance) and light preset, and test
+-- turning, drag-to-turn, animations and frame rate with a grid of models.
 --
 -- /petdex lab                 your target
 -- /petdex lab <displayID>     a creature display ID
 -- /petdex lab npc:<npcID>     a creature (NPC) ID
--- Each API call is checked and the results are printed to chat; what they
--- look like has to be judged by eye in the window.
 local _, ns = ...
 
-local STAGE_SIZE = 170
+local STAGE_SIZE = 230
 local GAP = 10
-local ROW_HEIGHT = 16 + STAGE_SIZE + 22
-local LOAD_DELAY = 1.5 -- seconds for models to load before the next step
+local LOAD_DELAY = 1 -- seconds for a model to load before it's styled again
 local GRID_COUNT = 20
 
 local STATES = {
     { key = "tamed", label = "Tamed" },
-    { key = "seen", label = "Seen (grey)" },
-    { key = "fog", label = "Unknown (fog)" },
-    { key = "dark", label = "Unknown (no light)" },
+    { key = "seen", label = "Seen" },
+    { key = "unknown", label = "Unknown" },
+}
+
+-- Ambient and diffuse intensity. The first round's 0.8/0.8 was blown out.
+local LIGHTS = {
+    { name = "soft", ambient = 0.35, diffuse = 0.55 },
+    { name = "medium", ambient = 0.5, diffuse = 0.7 },
+    { name = "dim", ambient = 0.25, diffuse = 0.45 },
+    { name = "bright", ambient = 0.8, diffuse = 0.8 },
 }
 
 local ANIMATIONS = {
     { 0, "stand" }, { 4, "walk" }, { 5, "run" }, { 16, "attack" }, { 1, "death" },
 }
 
-local lab
-local grid
-local stages = {} -- { kind = "model"|"scene", state, frame, actor, baseDistance, centerZ }
-local results, resultOrder = {}, {}
+local RARE_BLUE = { 0.42, 0.66, 1 }
+local WARM_LIGHT = { 1, 0.89, 0.69 }
+
+local lab, grid
+local stages = {} -- { state, model }
 local source -- { kind = "display"|"npc"|"unit", id | unit }
-local facing, zoom, animIndex, spinning = math.rad(-35), 1, 1, false
+local facing = math.rad(-35)
+local camScale = 1.5 -- PlayerModel:SetCamDistanceScale; > 1 pulls the camera back
+local lightIndex, animIndex, spinning = 1, 1, false
 local dragging, dragX
-local sceneCreateStatus -- recorded when the window is built, reported on each load
 
 ---------------------------------------------------------------------------
--- Checked calls
+-- Drawing helpers
 ---------------------------------------------------------------------------
--- An error stays recorded even if the same call later succeeds elsewhere.
-local function Record(label, status)
-    local previous = results[label]
-    if not previous then
-        table.insert(resultOrder, label)
-    elseif previous:find("^error") then
+-- Vertical gradient on a plain texture: newer clients take colour objects,
+-- older ones SetGradientAlpha. Falls back to a flat colour.
+local function SetVerticalGradient(texture, bottom, top)
+    texture:SetColorTexture(1, 1, 1, 1)
+    if CreateColor and pcall(texture.SetGradient, texture, "VERTICAL",
+        CreateColor(bottom[1], bottom[2], bottom[3], bottom[4]),
+        CreateColor(top[1], top[2], top[3], top[4])) then
         return
     end
-    results[label] = status
+    if texture.SetGradientAlpha and pcall(texture.SetGradientAlpha, texture, "VERTICAL",
+        bottom[1], bottom[2], bottom[3], bottom[4], top[1], top[2], top[3], top[4]) then
+        return
+    end
+    texture:SetColorTexture(top[1], top[2], top[3], (top[4] + bottom[4]) / 2)
 end
 
-local function Call(label, obj, method, ...)
-    local fn = obj and obj[method]
-    if type(fn) ~= "function" then
-        Record(label, "missing")
-        return false
+-- A soft ellipse: a few stacked circles (mask squashed to the texture's size)
+-- with falling alpha fake a blur.
+local CIRCLE_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+local function AddGlow(parent, layer, width, height, color, alpha, x, y)
+    local steps = 4
+    for i = 1, steps do
+        local scale = 1 - (i - 1) * 0.2
+        local texture = parent:CreateTexture(nil, layer, nil, i)
+        texture:SetSize(width * scale, height * scale)
+        texture:SetPoint("CENTER", parent, "BOTTOM", x, y)
+        texture:SetColorTexture(color[1], color[2], color[3], alpha / steps * 1.6)
+        if parent.CreateMaskTexture then
+            local mask = parent:CreateMaskTexture()
+            mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            mask:SetAllPoints(texture)
+            texture:AddMaskTexture(mask)
+        end
     end
-    local ok, err = pcall(fn, obj, ...)
-    Record(label, ok and "ok" or ("error: " .. tostring(err)))
-    return ok
 end
 
-local function Report(displayID)
-    ns:Print("Model lab results" .. (displayID and (" for display ID " .. displayID) or "") .. ":")
-    for _, label in ipairs(resultOrder) do
-        local status = results[label]
-        local color = status:find("^ok") and "40ff40" or (status == "missing" and "888888" or "ff4040")
-        print(("  %s: |cff%s%s|r"):format(label, color, status))
+local function AddBorder(frame, r, g, b)
+    for _, side in ipairs({ "TOP", "BOTTOM", "LEFT", "RIGHT" }) do
+        local line = frame:CreateTexture(nil, "BORDER")
+        line:SetColorTexture(r, g, b, 1)
+        if side == "TOP" or side == "BOTTOM" then
+            line:SetHeight(1)
+            line:SetPoint(side .. "LEFT")
+            line:SetPoint(side .. "RIGHT")
+        else
+            line:SetWidth(1)
+            line:SetPoint("TOP" .. side)
+            line:SetPoint("BOTTOM" .. side)
+        end
     end
-    print("  Now check the window by eye: is each Unknown a clean black silhouette, does Seen look grey, and does the ModelScene row show the beast at all?")
 end
 
 ---------------------------------------------------------------------------
--- PlayerModel row
+-- Models
 ---------------------------------------------------------------------------
--- Classic clients take SetLight(enabled, omni, dirX, dirY, dirZ, ambI, ambR,
--- ambG, ambB, difI, difR, difG, difB); newer ones take (enabled, lightTable).
+-- Forever takes the table form of SetLight; keep the classic form as a fallback.
 local function SetModelLight(model, ambient, diffuse)
-    if type(model.SetLight) ~= "function" then
-        Record("PlayerModel:SetLight", "missing")
+    if CreateVector3D and CreateColor and pcall(model.SetLight, model, true, {
+        omnidirectional = false,
+        point = CreateVector3D(0, -0.7, -0.7),
+        ambientIntensity = ambient,
+        ambientColor = CreateColor(1, 1, 1),
+        diffuseIntensity = diffuse,
+        diffuseColor = CreateColor(1, 1, 1),
+    }) then
         return
     end
-    if pcall(model.SetLight, model, true, false, 0, -0.7, -0.7, ambient, 1, 1, 1, diffuse, 1, 1, 1) then
-        Record("PlayerModel:SetLight", "ok (classic arguments)")
-        return
-    end
-    if CreateVector3D and CreateColor then
-        local ok, err = pcall(model.SetLight, model, true, {
-            omnidirectional = false,
-            point = CreateVector3D(0, -0.7, -0.7),
-            ambientIntensity = ambient,
-            ambientColor = CreateColor(1, 1, 1),
-            diffuseIntensity = diffuse,
-            diffuseColor = CreateColor(1, 1, 1),
-        })
-        Record("PlayerModel:SetLight", ok and "ok (table argument)" or ("error: " .. tostring(err)))
-    else
-        Record("PlayerModel:SetLight", "error: no signature worked")
-    end
+    pcall(model.SetLight, model, true, false, 0, -0.7, -0.7, ambient, 1, 1, 1, diffuse, 1, 1, 1)
 end
 
 local function LoadModel(model)
     pcall(model.ClearModel, model)
+    local ok, err
     if source.kind == "display" then
-        Call("PlayerModel:SetDisplayInfo", model, "SetDisplayInfo", source.id)
+        ok, err = pcall(model.SetDisplayInfo, model, source.id)
     elseif source.kind == "npc" then
-        Call("PlayerModel:SetCreature", model, "SetCreature", source.id)
+        ok, err = pcall(model.SetCreature, model, source.id)
     else
-        Call("PlayerModel:SetUnit", model, "SetUnit", source.unit)
+        ok, err = pcall(model.SetUnit, model, source.unit)
+    end
+    if not ok then
+        ns:Print("Loading the model failed:", tostring(err))
     end
 end
 
 local function StyleModel(stage)
-    local model = stage.frame
-    if stage.state == "tamed" then
-        SetModelLight(model, 0.8, 0.8)
-    elseif stage.state == "seen" then
-        Call("PlayerModel:SetDesaturation", model, "SetDesaturation", 1)
-        SetModelLight(model, 0.4, 0.3)
-    elseif stage.state == "fog" then
-        SetModelLight(model, 0.8, 0.8)
-        Call("PlayerModel:SetFogColor", model, "SetFogColor", 0, 0, 0)
-        Call("PlayerModel:SetFogNear", model, "SetFogNear", 0)
-        Call("PlayerModel:SetFogFar", model, "SetFogFar", 0.1)
-    else
+    local model = stage.model
+    pcall(model.SetCamDistanceScale, model, camScale)
+    pcall(model.SetFacing, model, facing)
+    if stage.state == "unknown" then
         SetModelLight(model, 0, 0)
-    end
-end
-
----------------------------------------------------------------------------
--- ModelScene row
----------------------------------------------------------------------------
-local function SetSceneLight(scene, ambient, diffuse)
-    Call("ModelScene:SetLightVisible", scene, "SetLightVisible", true)
-    Call("ModelScene:SetLightAmbientColor", scene, "SetLightAmbientColor", ambient, ambient, ambient)
-    Call("ModelScene:SetLightDiffuseColor", scene, "SetLightDiffuseColor", diffuse, diffuse, diffuse)
-    Call("ModelScene:SetLightDirection", scene, "SetLightDirection", -0.7, 0.3, -0.6)
-end
-
-local function StyleScene(stage)
-    local scene, actor = stage.frame, stage.actor
-    if stage.state == "tamed" then
-        SetSceneLight(scene, 0.7, 0.8)
-    elseif stage.state == "seen" then
-        SetSceneLight(scene, 0.45, 0.35)
-        if actor then
-            Call("Actor:SetDesaturation", actor, "SetDesaturation", 1)
-        end
-    elseif stage.state == "fog" then
-        SetSceneLight(scene, 0.7, 0.8)
-        Call("ModelScene:SetFogColor", scene, "SetFogColor", 0, 0, 0)
-        Call("ModelScene:SetFogNear", scene, "SetFogNear", 0)
-        Call("ModelScene:SetFogFar", scene, "SetFogFar", 0.1)
     else
-        SetSceneLight(scene, 0, 0)
+        local light = LIGHTS[lightIndex]
+        SetModelLight(model, light.ambient, light.diffuse)
+        pcall(model.SetDesaturation, model, stage.state == "seen" and 1 or 0)
     end
 end
 
-local function LoadActor(stage, displayID)
-    local actor = stage.actor
-    if not actor then return end
-    pcall(actor.ClearModel, actor)
-    if displayID then
-        Call("Actor:SetModelByCreatureDisplayID", actor, "SetModelByCreatureDisplayID", displayID)
-    elseif source.kind == "unit" then
-        Call("Actor:SetModelByUnit", actor, "SetModelByUnit", source.unit)
-    else
-        Record("Actor: load by NPC ID", "not possible without a display ID")
+local function StyleAll()
+    for _, stage in ipairs(stages) do
+        StyleModel(stage)
     end
 end
 
--- The camera sits on +X looking back at the actor at the origin.
-local function ApplyCamera(stage)
-    local scene = stage.frame
-    local distance = (stage.baseDistance or 4) * zoom
-    Call("ModelScene:SetCameraPosition", scene, "SetCameraPosition", distance, 0, stage.centerZ or 1)
-    Call("ModelScene:SetCameraOrientationByYawPitchRoll", scene, "SetCameraOrientationByYawPitchRoll", math.pi, 0, 0)
-    Call("ModelScene:SetCameraFieldOfView", scene, "SetCameraFieldOfView", math.rad(40))
-    Call("ModelScene:SetCameraNearClip", scene, "SetCameraNearClip", 0.01)
-    Call("ModelScene:SetCameraFarClip", scene, "SetCameraFarClip", 100)
+local function ReadDisplayID()
+    local model = stages[1] and stages[1].model
+    if not model then return end
+    local ok, value = pcall(model.GetDisplayInfo, model)
+    if ok and not ns.IsSecret(value) and type(value) == "number" and value > 0 then
+        return value
+    end
 end
 
--- Fit the camera to the model's bounding box (vectors on newer clients,
--- six numbers on older ones).
-local function FrameActor(stage)
-    local actor = stage.actor
-    local minX, minY, minZ, maxX, maxY, maxZ = -1, -1, 0, 1, 1, 2
-    local label = "Actor:GetActiveBoundingBox"
-    if type(actor.GetActiveBoundingBox) ~= "function" then
-        Record(label, "missing")
-    else
-        local ok, a, b, c, d, e, f = pcall(actor.GetActiveBoundingBox, actor)
-        if ok and type(a) == "table" and type(b) == "table" then
-            minX, minY, minZ, maxX, maxY, maxZ = a.x, a.y, a.z, b.x, b.y, b.z
-            Record(label, "ok (vectors)")
-        elseif ok and type(a) == "number" and type(f) == "number" then
-            minX, minY, minZ, maxX, maxY, maxZ = a, b, c, d, e, f
-            Record(label, "ok (numbers)")
-        else
-            Record(label, ok and "error: no bounds (model not loaded?)" or ("error: " .. tostring(a)))
-        end
+local function Load()
+    for _, stage in ipairs(stages) do
+        LoadModel(stage.model)
+        StyleModel(stage)
     end
-    local size = math.max(maxX - minX, maxY - minY, maxZ - minZ, 0.5)
-    stage.baseDistance = size * 1.9 -- fits the model in a 40 degree field of view
-    stage.centerZ = (minZ + maxZ) / 2
-    ApplyCamera(stage)
+    -- Loading can reset light and camera, so style again once it's in.
+    C_Timer.After(LOAD_DELAY, function()
+        StyleAll()
+        local displayID = ReadDisplayID()
+        ns:Print(("Model lab: %s%s. Light \"%s\", camera distance %.2f."):format(
+            source.kind == "unit" and "target" or (source.kind .. " " .. source.id),
+            displayID and (", display ID " .. displayID) or "",
+            LIGHTS[lightIndex].name, camScale))
+    end)
 end
 
 ---------------------------------------------------------------------------
@@ -219,100 +185,36 @@ end
 ---------------------------------------------------------------------------
 local function ApplyFacing()
     for _, stage in ipairs(stages) do
-        if stage.kind == "model" then
-            pcall(stage.frame.SetFacing, stage.frame, facing)
-        elseif stage.actor then
-            pcall(stage.actor.SetYaw, stage.actor, facing)
-        end
+        pcall(stage.model.SetFacing, stage.model, facing)
     end
 end
 
-local function ApplyZoom()
-    for _, stage in ipairs(stages) do
-        if stage.kind == "model" then
-            Call("PlayerModel:SetCamDistanceScale", stage.frame, "SetCamDistanceScale", zoom)
-        elseif stage.actor then
-            ApplyCamera(stage)
-        end
-    end
+local function ChangeCamera(delta)
+    camScale = math.max(0.5, math.min(4, camScale + delta))
+    StyleAll()
+    ns:Print(("Camera distance %.2f"):format(camScale))
+end
+
+local function NextLight()
+    lightIndex = lightIndex % #LIGHTS + 1
+    StyleAll()
+    local light = LIGHTS[lightIndex]
+    ns:Print(("Light \"%s\" (ambient %.2f, diffuse %.2f)"):format(light.name, light.ambient, light.diffuse))
 end
 
 local function NextAnimation()
     animIndex = animIndex % #ANIMATIONS + 1
     local id, name = ANIMATIONS[animIndex][1], ANIMATIONS[animIndex][2]
-    local okModel, okActor = true, true
     for _, stage in ipairs(stages) do
-        if stage.kind == "model" then
-            okModel = Call("PlayerModel:SetAnimation", stage.frame, "SetAnimation", id) and okModel
-        elseif stage.actor then
-            okActor = Call("Actor:SetAnimation", stage.actor, "SetAnimation", id) and okActor
-        end
+        pcall(stage.model.SetAnimation, stage.model, id)
     end
-    ns:Print(("Animation %d (%s): PlayerModel %s, ModelScene %s"):format(id, name,
-        okModel and "ok" or "failed", okActor and "ok" or "failed"))
-end
-
-local function Load()
-    wipe(results)
-    wipe(resultOrder)
-    if sceneCreateStatus then
-        Record("CreateFrame(\"ModelScene\")", sceneCreateStatus)
-    end
-    local directID = source.kind == "display" and source.id or nil
-
-    for _, stage in ipairs(stages) do
-        if stage.kind == "model" then
-            LoadModel(stage.frame)
-            StyleModel(stage)
-            Call("PlayerModel:SetFacing", stage.frame, "SetFacing", facing)
-        else
-            StyleScene(stage)
-            if directID then
-                LoadActor(stage, directID)
-            end
-        end
-    end
-
-    C_Timer.After(LOAD_DELAY, function()
-        local displayID = directID
-        if not displayID then
-            -- Learn the display ID from the loaded PlayerModel so the
-            -- ModelScene row can load the same look.
-            local model = stages[1] and stages[1].frame
-            if model and type(model.GetDisplayInfo) == "function" then
-                local ok, value = pcall(model.GetDisplayInfo, model)
-                if ok and not ns.IsSecret(value) and type(value) == "number" and value > 0 then
-                    displayID = value
-                end
-            end
-            for _, stage in ipairs(stages) do
-                if stage.kind == "scene" then
-                    LoadActor(stage, displayID)
-                end
-            end
-        end
-
-        C_Timer.After(LOAD_DELAY, function()
-            for _, stage in ipairs(stages) do
-                if stage.kind == "model" then
-                    -- Loading a model can reset fog and light; apply them again.
-                    StyleModel(stage)
-                elseif stage.actor then
-                    FrameActor(stage)
-                    StyleScene(stage)
-                    Call("Actor:SetYaw", stage.actor, "SetYaw", facing)
-                end
-            end
-            Report(displayID)
-        end)
-    end)
+    ns:Print(("Animation %d (%s)"):format(id, name))
 end
 
 -- Shows GRID_COUNT small models under the lab and compares the frame rate.
 local function ToggleGrid()
     if grid and grid:IsShown() then
         grid:Hide()
-        ns:Print("Grid test hidden.")
         return
     end
     local cell, perRow = 64, 10
@@ -345,66 +247,60 @@ end
 ---------------------------------------------------------------------------
 -- Window
 ---------------------------------------------------------------------------
-local function AddBorder(frame, r, g, b)
-    for _, side in ipairs({ "TOP", "BOTTOM", "LEFT", "RIGHT" }) do
-        local line = frame:CreateTexture(nil, "BORDER")
-        line:SetColorTexture(r, g, b, 1)
-        if side == "TOP" or side == "BOTTOM" then
-            line:SetHeight(1)
-            line:SetPoint(side .. "LEFT")
-            line:SetPoint(side .. "RIGHT")
-        else
-            line:SetWidth(1)
-            line:SetPoint("TOP" .. side)
-            line:SetPoint("BOTTOM" .. side)
-        end
-    end
-end
-
-local function StartDrag()
-    dragging = true
-    dragX = GetCursorPosition()
-end
-
-local function CreateStage(kind, state, x, y)
+local function CreateStage(state, x, y)
     local holder = CreateFrame("Frame", nil, lab)
     holder:SetSize(STAGE_SIZE, STAGE_SIZE)
     holder:SetPoint("TOPLEFT", x, y)
-    local bg = holder:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0.16, 0.10, 0.07, 1)
     AddBorder(holder, 0.35, 0.29, 0.17)
 
-    local label = lab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    label:SetPoint("TOP", holder, "BOTTOM", 0, -4)
+    -- Backdrop: warm floor fading to near black at the top.
+    local backdrop = holder:CreateTexture(nil, "BACKGROUND", nil, 0)
+    backdrop:SetAllPoints()
+    if state.key == "unknown" then
+        SetVerticalGradient(backdrop, { 0.11, 0.12, 0.15, 1 }, { 0.04, 0.045, 0.06, 1 })
+    else
+        SetVerticalGradient(backdrop, { 0.24, 0.14, 0.09, 1 }, { 0.05, 0.035, 0.03, 1 })
+    end
+
+    -- Spotlight beam from the top (faint for seen, none for unknown).
+    if state.key ~= "unknown" then
+        local beam = holder:CreateTexture(nil, "BACKGROUND", nil, 1)
+        beam:SetPoint("TOP")
+        beam:SetSize(STAGE_SIZE * 0.55, STAGE_SIZE * 0.85)
+        local strength = state.key == "tamed" and 0.22 or 0.08
+        SetVerticalGradient(beam, { WARM_LIGHT[1], WARM_LIGHT[2], WARM_LIGHT[3], 0 },
+            { WARM_LIGHT[1], WARM_LIGHT[2], WARM_LIGHT[3], strength })
+    end
+
+    -- Ground glow: rarity colour when tamed, grey when seen. Unknown gets a
+    -- gold glow behind the body instead, so the black silhouette stands out.
+    if state.key == "tamed" then
+        AddGlow(holder, "BACKGROUND", STAGE_SIZE * 0.8, 34, RARE_BLUE, 0.55, 0, 34)
+    elseif state.key == "seen" then
+        AddGlow(holder, "BACKGROUND", STAGE_SIZE * 0.7, 28, { 0.6, 0.6, 0.6 }, 0.3, 0, 34)
+    else
+        AddGlow(holder, "BACKGROUND", STAGE_SIZE * 0.75, STAGE_SIZE * 0.55, { 0.79, 0.64, 0.36 }, 0.35, 0, STAGE_SIZE * 0.45)
+    end
+
+    local label = lab:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    label:SetPoint("TOP", holder, "BOTTOM", 0, -5)
     label:SetText(state.label)
 
-    local stage = { kind = kind, state = state.key }
-    if kind == "model" then
-        stage.frame = CreateFrame("PlayerModel", nil, holder)
-    else
-        local ok, scene = pcall(CreateFrame, "ModelScene", nil, holder)
-        sceneCreateStatus = ok and "ok" or ("error: " .. tostring(scene))
-        if not ok then return end
-        stage.frame = scene
-        if type(scene.CreateActor) == "function" then
-            local okActor, actor = pcall(scene.CreateActor, scene)
-            if okActor then
-                stage.actor = actor
-            end
-        end
-    end
-    stage.frame:SetAllPoints()
-    stage.frame:EnableMouse(true)
-    stage.frame:SetScript("OnMouseDown", StartDrag)
-    stage.frame:SetScript("OnMouseUp", function() dragging = false end)
-    table.insert(stages, stage)
+    local model = CreateFrame("PlayerModel", nil, holder)
+    model:SetAllPoints()
+    model:EnableMouse(true)
+    model:SetScript("OnMouseDown", function()
+        dragging = true
+        dragX = GetCursorPosition()
+    end)
+    model:SetScript("OnMouseUp", function() dragging = false end)
+    table.insert(stages, { state = state.key, model = model })
 end
 
 local function CreateLab()
     local width = GAP + #STATES * (STAGE_SIZE + GAP)
     lab = CreateFrame("Frame", "PetDexModelLab", UIParent)
-    lab:SetSize(width, 36 + 2 * ROW_HEIGHT + 46)
+    lab:SetSize(width, 40 + STAGE_SIZE + 26 + 44)
     lab:SetPoint("CENTER")
     lab:SetFrameStrata("DIALOG")
     lab:SetMovable(true)
@@ -419,7 +315,7 @@ local function CreateLab()
 
     local bg = lab:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
-    bg:SetColorTexture(0.06, 0.065, 0.08, 0.96)
+    bg:SetColorTexture(0.06, 0.065, 0.08, 0.97)
     AddBorder(lab, 0.79, 0.64, 0.36)
 
     local title = lab:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -429,14 +325,8 @@ local function CreateLab()
     local close = CreateFrame("Button", nil, lab, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", 2, 2)
 
-    for row, kind in ipairs({ "model", "scene" }) do
-        local top = -36 - (row - 1) * ROW_HEIGHT
-        local heading = lab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        heading:SetPoint("TOPLEFT", GAP, top)
-        heading:SetText(kind == "model" and "PlayerModel" or "ModelScene + actor")
-        for i, state in ipairs(STATES) do
-            CreateStage(kind, state, GAP + (i - 1) * (STAGE_SIZE + GAP), top - 16)
-        end
+    for i, state in ipairs(STATES) do
+        CreateStage(state, GAP + (i - 1) * (STAGE_SIZE + GAP), -36)
     end
 
     local previous
@@ -452,13 +342,14 @@ local function CreateLab()
         button:SetScript("OnClick", onClick)
         previous = button
     end
-    AddButton("Turn left", 78, function() facing = facing - math.pi / 8; ApplyFacing() end)
-    AddButton("Turn right", 82, function() facing = facing + math.pi / 8; ApplyFacing() end)
-    AddButton("Spin", 56, function() spinning = not spinning end)
-    AddButton("Zoom in", 72, function() zoom = math.max(0.4, zoom - 0.15); ApplyZoom() end)
-    AddButton("Zoom out", 76, function() zoom = math.min(3, zoom + 0.15); ApplyZoom() end)
-    AddButton("Animation", 82, NextAnimation)
-    AddButton("Grid x" .. GRID_COUNT, 74, ToggleGrid)
+    AddButton("Turn left", 76, function() facing = facing - math.pi / 8; ApplyFacing() end)
+    AddButton("Turn right", 80, function() facing = facing + math.pi / 8; ApplyFacing() end)
+    AddButton("Spin", 52, function() spinning = not spinning end)
+    AddButton("Closer", 64, function() ChangeCamera(-0.15) end)
+    AddButton("Farther", 68, function() ChangeCamera(0.15) end)
+    AddButton("Light", 56, NextLight)
+    AddButton("Animation", 80, NextAnimation)
+    AddButton("Grid x" .. GRID_COUNT, 72, ToggleGrid)
     AddButton("Reload", 64, Load)
 
     lab:SetScript("OnUpdate", function(_, elapsed)
