@@ -169,7 +169,8 @@ local function UpdateViewer()
         ColorText(viewer.name, state == "tamed" and rarityColor or { 0.75, 0.72, 0.66 })
     end
 
-    local lines = { ("%s  ·  %s model"):format(info.family, info.model) }
+    local lines = { info.model == info.family and info.family
+        or ("%s  ·  %s model"):format(info.family, info.model) }
     local rarityLine = "|cff%02x%02x%02x%s|r"
     rarityLine = rarityLine:format(math.floor(rarityColor[1] * 255), math.floor(rarityColor[2] * 255),
         math.floor(rarityColor[3] * 255),
@@ -532,7 +533,7 @@ local function CreateWindow()
     frame = CreateFrame("Frame", "PetDexFrame", UIParent)
     frame:SetSize(WIDTH, HEIGHT)
     frame:SetPoint("CENTER")
-    frame:SetFrameStrata("HIGH")
+    frame:SetFrameStrata("DIALOG") -- above action bars and unit frames
     frame:SetToplevel(true)
     frame:SetMovable(true)
     frame:SetClampedToScreen(true)
@@ -541,7 +542,7 @@ local function CreateWindow()
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     table.insert(UISpecialFrames, "PetDexFrame") -- Escape closes it
-    Fill(frame, 0.06, 0.065, 0.08, 0.98)
+    Fill(frame, 0.06, 0.065, 0.08, 1)
     AddBorder(frame, GOLD)
 
     -- Title bar
@@ -602,6 +603,7 @@ local function CreateWindow()
 
     -- Content
     local content = CreateFrame("Frame", nil, frame)
+    Fill(content, 0.06, 0.065, 0.08, 1)
     content:SetPoint("TOPLEFT", SIDEBAR_WIDTH, -BODY_TOP)
     content:SetPoint("BOTTOMRIGHT", -VIEWER_WIDTH, 0)
     frame.familyTitle = content:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")

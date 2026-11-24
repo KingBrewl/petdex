@@ -232,7 +232,8 @@ function ns.CreateBeastStage(parent, width, height)
         self.beams[i] = beam
     end
 
-    local steps = width >= 200 and 10 or 6
+    -- More, fainter layers blend into a smoother glow; big stages need more.
+    local steps = width >= 200 and 24 or 12
     self.floorGlow = CreateGlow(frame, steps, width * 0.8, math.max(16, height * 0.16), height * 0.22)
     self.backGlow = CreateGlow(frame, steps, width * 0.85, height * 0.7, height * 0.5)
 
