@@ -43,8 +43,8 @@ local WARM_LIGHT = { 1, 0.89, 0.69 }
 local lab, grid
 local stages = {} -- { state, model }
 local source -- { kind = "display"|"npc"|"unit", id | unit }
-local facing = math.rad(-35)
-local camScale = 1.5 -- PlayerModel:SetCamDistanceScale; > 1 pulls the camera back
+local facing = math.rad(-60) -- 0 faces the camera; this is a three-quarter view
+local camScale = 1.05 -- PlayerModel:SetCamDistanceScale; > 1 pulls the camera back
 local lightIndex, animIndex, spinning = 1, 1, false
 local dragging, dragX
 
@@ -67,17 +67,17 @@ local function SetVerticalGradient(texture, bottom, top)
     texture:SetColorTexture(top[1], top[2], top[3], (top[4] + bottom[4]) / 2)
 end
 
--- A soft ellipse: a few stacked circles (mask squashed to the texture's size)
--- with falling alpha fake a blur.
+-- A soft ellipse: stacked circles (mask squashed to the texture's size) with
+-- low alpha each fake a blur. Four steps showed visible rings; ten blend.
 local CIRCLE_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+local GLOW_STEPS = 10
 local function AddGlow(parent, layer, width, height, color, alpha, x, y)
-    local steps = 4
-    for i = 1, steps do
-        local scale = 1 - (i - 1) * 0.2
-        local texture = parent:CreateTexture(nil, layer, nil, i)
+    for i = 1, GLOW_STEPS do
+        local scale = 1 - (i - 1) * (0.85 / GLOW_STEPS)
+        local texture = parent:CreateTexture(nil, layer, nil, 2)
         texture:SetSize(width * scale, height * scale)
         texture:SetPoint("CENTER", parent, "BOTTOM", x, y)
-        texture:SetColorTexture(color[1], color[2], color[3], alpha / steps * 1.6)
+        texture:SetColorTexture(color[1], color[2], color[3], alpha * 2.2 / GLOW_STEPS)
         if parent.CreateMaskTexture then
             local mask = parent:CreateMaskTexture()
             mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
@@ -262,24 +262,29 @@ local function CreateStage(state, x, y)
         SetVerticalGradient(backdrop, { 0.24, 0.14, 0.09, 1 }, { 0.05, 0.035, 0.03, 1 })
     end
 
-    -- Spotlight beam from the top (faint for seen, none for unknown).
+    -- Spotlight beam from the top (faint for seen, none for unknown). Nested
+    -- beams of falling width soften its edges.
     if state.key ~= "unknown" then
-        local beam = holder:CreateTexture(nil, "BACKGROUND", nil, 1)
-        beam:SetPoint("TOP")
-        beam:SetSize(STAGE_SIZE * 0.55, STAGE_SIZE * 0.85)
         local strength = state.key == "tamed" and 0.22 or 0.08
-        SetVerticalGradient(beam, { WARM_LIGHT[1], WARM_LIGHT[2], WARM_LIGHT[3], 0 },
-            { WARM_LIGHT[1], WARM_LIGHT[2], WARM_LIGHT[3], strength })
+        for i, widthScale in ipairs({ 0.65, 0.5, 0.36 }) do
+            local beam = holder:CreateTexture(nil, "BACKGROUND", nil, 1)
+            beam:SetPoint("TOP")
+            beam:SetSize(STAGE_SIZE * widthScale, STAGE_SIZE * (0.75 + i * 0.05))
+            SetVerticalGradient(beam, { WARM_LIGHT[1], WARM_LIGHT[2], WARM_LIGHT[3], 0 },
+                { WARM_LIGHT[1], WARM_LIGHT[2], WARM_LIGHT[3], strength / 2 })
+        end
     end
 
-    -- Ground glow: rarity colour when tamed, grey when seen. Unknown gets a
-    -- gold glow behind the body instead, so the black silhouette stands out.
+    -- Ground glow at the beast's feet: rarity colour when tamed, grey when
+    -- seen. Unknown gets a gold glow behind the body instead, so the black
+    -- silhouette stands out.
+    local feet = STAGE_SIZE * 0.27
     if state.key == "tamed" then
-        AddGlow(holder, "BACKGROUND", STAGE_SIZE * 0.8, 34, RARE_BLUE, 0.55, 0, 34)
+        AddGlow(holder, "BACKGROUND", STAGE_SIZE * 0.8, 38, RARE_BLUE, 0.6, 0, feet)
     elseif state.key == "seen" then
-        AddGlow(holder, "BACKGROUND", STAGE_SIZE * 0.7, 28, { 0.6, 0.6, 0.6 }, 0.3, 0, 34)
+        AddGlow(holder, "BACKGROUND", STAGE_SIZE * 0.7, 32, { 0.6, 0.6, 0.6 }, 0.3, 0, feet)
     else
-        AddGlow(holder, "BACKGROUND", STAGE_SIZE * 0.75, STAGE_SIZE * 0.55, { 0.79, 0.64, 0.36 }, 0.35, 0, STAGE_SIZE * 0.45)
+        AddGlow(holder, "BACKGROUND", STAGE_SIZE * 0.85, STAGE_SIZE * 0.7, { 0.79, 0.64, 0.36 }, 0.4, 0, STAGE_SIZE * 0.5)
     end
 
     local label = lab:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
