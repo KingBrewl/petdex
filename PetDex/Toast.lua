@@ -64,6 +64,11 @@ local function CreateToast()
     toast.stage = ns.CreateBeastStage(toast, 76, 76)
     toast.stage.frame:SetPoint("LEFT", 12, 0)
     toast.slot = ns.Skin.FrameStage(toast, toast.stage)
+    -- Achievements and rank-ups show an icon in the slot instead.
+    toast.icon = toast.slot:CreateTexture(nil, "ARTWORK")
+    toast.icon:SetPoint("TOPLEFT", toast.stage.frame, "TOPLEFT", 4, -4)
+    toast.icon:SetPoint("BOTTOMRIGHT", toast.stage.frame, "BOTTOMRIGHT", -4, 4)
+    toast.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
     toast.title = toast:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     toast.title:SetPoint("TOPLEFT", toast.stage.frame, "TOPRIGHT", 12, -4)
@@ -79,8 +84,12 @@ local function CreateToast()
 
     toast:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     toast:SetScript("OnClick", function(_, button)
-        if button == "LeftButton" and current and ns.OpenDexAt then
-            ns:OpenDexAt(current.lookID)
+        if button == "LeftButton" and current then
+            if current.lookID and ns.OpenDexAt then
+                ns:OpenDexAt(current.lookID)
+            elseif ns.OpenDexTab then
+                ns:OpenDexTab("profile")
+            end
         end
         Finish()
     end)
@@ -102,9 +111,49 @@ local function CreateToast()
     end)
 end
 
+-- Achievement or rank-up: an icon, a gold title and the points.
+local ACHIEVEMENT_ICON = "Interface\\Icons\\INV_Misc_Book_09"
+local RANK_ICON = "Interface\\Icons\\Ability_Hunter_BeastTaming"
+
+local function ShowMilestone(entry)
+    if not toast then CreateToast() end
+    current = entry
+    toast.stage:SetBeast(nil)
+    toast.stage.frame:Hide()
+    toast.icon:Show()
+    local score = ns:GetScore()
+    if entry.kind == "achievement" then
+        local def = entry.achievement
+        toast.icon:SetTexture(ACHIEVEMENT_ICON)
+        toast.title:SetText("Achievement earned!")
+        toast.name:SetText(def.name)
+        toast.sub:SetText(def.desc)
+        toast.progress:SetText(("+%d points  ·  %d total"):format(def.points, score.total))
+    else
+        toast.icon:SetTexture(RANK_ICON)
+        toast.title:SetText("Rank up!")
+        toast.name:SetText(("Rank %d  ·  %s"):format(entry.rank, ns.RankTitle(entry.rank)))
+        toast.sub:SetText(("%d points"):format(score.total))
+        toast.progress:SetText(entry.rank < ns.MAX_RANK
+            and ("%d points to rank %d"):format(ns.RankThreshold(entry.rank + 1) - score.total, entry.rank + 1)
+            or "The highest rank")
+    end
+    toast.name:SetTextColor(1, 0.82, 0)
+    ns.Skin.SetBorderColor(toast, GOLD)
+    ns.Skin.SetBorderColor(toast.slot, GOLD)
+    toast.elapsed = 0
+    toast:SetAlpha(1)
+    toast:Show()
+    PlayToastSound("tamed", "unique")
+end
+
 ShowNext = function()
     local entry = table.remove(queue, 1)
     if not entry then return end
+    if entry.kind == "achievement" or entry.kind == "rank" then
+        ShowMilestone(entry)
+        return
+    end
     local info = ns:GetLookInfo(entry.lookID)
     if not info then
         ShowNext()
@@ -112,6 +161,8 @@ ShowNext = function()
     end
     if not toast then CreateToast() end
     current = entry
+    toast.icon:Hide()
+    toast.stage.frame:Show()
 
     local rarityColor = ns.RARITY_COLORS[info.rarity] or ns.RARITY_COLORS.common
     local rare = info.rarity ~= "common"
@@ -141,9 +192,31 @@ ShowNext = function()
     PlayToastSound(entry.kind, info.rarity)
 end
 
+function ns:ShowAchievementToast(def)
+    if not self.db.settings.toasts then return end
+    table.insert(queue, { kind = "achievement", achievement = def })
+    if not current then ShowNext() end
+end
+
+function ns:ShowRankToast(rank)
+    if not self.db.settings.toasts then return end
+    table.insert(queue, { kind = "rank", rank = rank })
+    if not current then ShowNext() end
+end
+
 -- /petdex testtoast [rare|unique|tamed]: preview a toast and its sound with
 -- a random beast of that rarity, without touching the collection.
 function ns:TestToast(kind)
+    if kind == "achievement" then
+        table.insert(queue, { kind = "achievement",
+            achievement = { name = "Rare Sighting", desc = "Document a rare beast", points = 10 } })
+        if not current then ShowNext() end
+        return
+    elseif kind == "rank" then
+        table.insert(queue, { kind = "rank", rank = 5 })
+        if not current then ShowNext() end
+        return
+    end
     local rarity = (kind == "rare" or kind == "unique") and kind or "common"
     local picks = {}
     self:ForEachLook(function(lookID, look)

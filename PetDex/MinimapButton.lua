@@ -30,6 +30,11 @@ local function ShowTooltip(self)
     local stats = ns:GetStats()
     GameTooltip:AddLine(("Documented %d / %d beasts"):format(stats.seen, stats.total), 1, 1, 1)
     GameTooltip:AddLine(("Tamed %d"):format(stats.tamed), 1, 1, 1)
+    if ns.GetScore then
+        local score = ns:GetScore()
+        GameTooltip:AddLine(("Rank %d  %s  ·  %d points"):format(score.rank, ns.RankTitle(score.rank), score.total),
+            1, 0.82, 0)
+    end
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine("Click to open the dex", 0.6, 0.6, 0.6)
     GameTooltip:AddLine("Drag to move this button", 0.6, 0.6, 0.6)

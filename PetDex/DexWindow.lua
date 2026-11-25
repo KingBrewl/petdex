@@ -67,6 +67,7 @@ local TABS = {
     { key = "dex", label = "Dex" },
     { key = "hunt", label = "Hunt" },
     { key = "pets", label = "My Pets" },
+    { key = "profile", label = "Profile" },
 }
 ns.DexViews = ns.DexViews or {}
 local views = {}
@@ -137,7 +138,14 @@ local function UpdateHeader()
         end
     end
     frame.headerTotal:SetText(("Documented %d / %d beasts"):format(seen, total))
-    frame.headerSeen:SetText(("%d tamed"):format(tamed))
+    -- Rank and points (Points.lua) next to the tame count.
+    local score = ns.GetScore and ns:GetScore()
+    if score then
+        frame.headerSeen:SetText(("%d tamed   ·   Rank %d  %s   ·   %d points"):format(tamed, score.rank,
+            ns.RankTitle(score.rank), score.total))
+    else
+        frame.headerSeen:SetText(("%d tamed"):format(tamed))
+    end
     for rarity, label in pairs(frame.rarityCounters) do
         local counts = byRarity[rarity] or { total = 0, seen = 0 }
         label:SetText(("%s  %d/%d"):format(RARITY_LABELS[rarity], counts.seen, counts.total))
@@ -1018,6 +1026,11 @@ end
 -- Open the dex on one look (from a toast or the other tabs).
 function ns:OpenDexAt(lookID)
     OpenOn("dex", lookID)
+end
+
+-- Open the window on a tab by key (e.g. "profile" from an achievement toast).
+function ns:OpenDexTab(key)
+    OpenOn(key)
 end
 
 -- Open the Dex tab on a family (from the Overview).

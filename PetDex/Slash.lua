@@ -32,7 +32,7 @@ local function PrintHelp()
     print("  /petdex probe [unit] - debug: test reading a unit's model (default target)")
     print("  /petdex lab [displayID | npc:<id>] - debug: model lab window (default target)")
     print("  /petdex minimap - show or hide the minimap button")
-    print("  /petdex testtoast [rare | unique | tamed] - preview a discovery popup")
+    print("  /petdex testtoast [rare | unique | tamed | achievement | rank] - preview a popup")
     print("  /petdex clearseen - forget all sightings (seen, not tamed); tames are kept")
     print("  /petdex reset - wipe all collection data")
 end

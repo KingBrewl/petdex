@@ -265,8 +265,11 @@ function ns:GetDexFamilies()
     return families
 end
 
--- The dex window sets this to refresh itself when the collection changes.
+-- Award any achievements (Points.lua), then let the dex window refresh.
 local function NotifyChanged()
+    if ns.CheckAchievements then
+        ns:CheckAchievements()
+    end
     if ns.OnCollectionChanged then
         ns:OnCollectionChanged()
     end

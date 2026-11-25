@@ -11,6 +11,7 @@ Data\Overrides.lua
 Data\Families.lua
 Collection.lua
 Map.lua
+Points.lua
 Tracking.lua
 Tooltip.lua
 Skin.lua
@@ -19,6 +20,7 @@ DexWindow.lua
 Views\Overview.lua
 Views\Hunt.lua
 Views\Pets.lua
+Views\Profile.lua
 Toast.lua
 MinimapButton.lua
 Probe.lua
