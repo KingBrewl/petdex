@@ -8,6 +8,7 @@
 Core.lua
 Data\Beasts.lua
 Data\Overrides.lua
+Data\Families.lua
 Collection.lua
 Map.lua
 Tracking.lua
