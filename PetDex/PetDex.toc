@@ -9,6 +9,7 @@ Core.lua
 Data\Beasts.lua
 Data\Overrides.lua
 Data\Families.lua
+Data\FamilyData.lua
 Collection.lua
 Map.lua
 Points.lua

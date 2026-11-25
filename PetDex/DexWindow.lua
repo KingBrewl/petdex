@@ -208,6 +208,24 @@ local function CombatLines(info, lines)
     if beast and beast.school then
         table.insert(lines, ("Deals %s damage"):format(beast.school))
     end
+    -- What taming it teaches, as recorded when a beast of this look was
+    -- tamed (the game data doesn't say).
+    local taught
+    for _, npcID in ipairs(ns:GetLookNPCs(info.lookID)) do
+        taught = taught or ns.db.taught[npcID]
+    end
+    if taught and #taught.abilities > 0 then
+        local names = {}
+        for _, ability in ipairs(taught.abilities) do
+            local text = ability.rank and (ability.name .. " " .. ability.rank:gsub("Rank ", "")) or ability.name
+            table.insert(names, ability.passive and GREY:format(text) or text)
+        end
+        table.insert(lines, "Taming teaches: " .. table.concat(names, ", "))
+    elseif taught then
+        table.insert(lines, GREY:format("Taming teaches nothing new"))
+    else
+        table.insert(lines, GREY:format("Tame it to record which abilities it teaches."))
+    end
 end
 
 local function TamingLines(info, lines)
@@ -226,6 +244,10 @@ local function TamingLines(info, lines)
     end
     if beast and beast.elite then
         table.insert(lines, WARN:format("Elite") .. ": bring help")
+    end
+    local familyData = ns.FamilyData and ns.FamilyData[info.family]
+    if familyData then
+        table.insert(lines, "Eats: " .. table.concat(familyData.diet, ", "))
     end
 end
 
@@ -590,8 +612,12 @@ local function GetFamilyButton(index)
     button.selected:SetBlendMode("ADD")
     button.selected:SetVertexColor(1, 0.82, 0, 0.6)
     button:SetHighlightTexture(questHighlight, "ADD")
+    button.icon = button:CreateTexture(nil, "ARTWORK")
+    button.icon:SetSize(16, 16)
+    button.icon:SetPoint("LEFT", 6, 2)
+    button.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     button.label = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    button.label:SetPoint("LEFT", 8, 2)
+    button.label:SetPoint("LEFT", button.icon, "RIGHT", 6, 0)
     button.count = button:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     button.count:SetPoint("RIGHT", -8, 2)
     button.bar = Skin.CreateBar(button, 3, GOLD)
@@ -616,6 +642,8 @@ local function UpdateFamilyButtons()
         button:SetPoint("TOPLEFT", 10, -FAMILY_LIST_TOP - (index - 1) * rowHeight)
         button.family = family
         button.label:SetText(family.name)
+        local familyData = ns.FamilyData and ns.FamilyData[family.name]
+        button.icon:SetTexture(familyData and familyData.icon or TAMED_ICON)
         button.count:SetText(("%d/%d"):format(family.seen, family.total))
         button.bar:SetValue(family.total > 0 and family.seen / family.total or 0)
         local isSelected = selectedFamily and selectedFamily.name == family.name

@@ -136,9 +136,13 @@ local function FamilyRow(view, index)
     local row = view.familyRows[index]
     if row then return row end
     row = CreateRow(view.familyPanel, FAMILY_ROW_HEIGHT)
+    row.icon = row:CreateTexture(nil, "ARTWORK")
+    row.icon:SetSize(18, 18)
+    row.icon:SetPoint("LEFT", 6, 0)
+    row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    row.name:SetPoint("LEFT", 6, 0)
-    row.name:SetWidth(FAMILY_NAME_WIDTH)
+    row.name:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
+    row.name:SetWidth(FAMILY_NAME_WIDTH - 24)
     row.name:SetJustifyH("LEFT")
     -- Tamed count with the Beast Taming icon, at the right.
     row.tamed = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -226,6 +230,8 @@ local function Refresh(view)
         ns.Skin.Stripe(row, line + 1)
         row.familyName = family.name
         row.name:SetText(family.name)
+        local familyData = ns.FamilyData and ns.FamilyData[family.name]
+        row.icon:SetTexture(familyData and familyData.icon or TAMED_ICON)
         row.bar:SetProgress(family.seen, family.total)
         row.tamed:SetText(family.tamed)
         row:Show()

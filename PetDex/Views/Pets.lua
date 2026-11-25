@@ -33,22 +33,10 @@ end
 
 -- Abilities in the pet spellbook: "Claw (Rank 6)", passives marked.
 local function PetAbilities()
-    local count = Call(HasPetSpells)
-    if not count or count == 0 then return {} end
-    local bookType = BOOKTYPE_PET or "pet"
     local abilities = {}
-    for i = 1, count do
-        local name, rank = Call(GetSpellBookItemName, i, bookType)
-        if not name then
-            name, rank = Call(GetSpellName, i, bookType)
-        end
-        if name then
-            local text = (rank and rank ~= "") and (name .. " (" .. rank .. ")") or name
-            if Call(IsPassiveSpell, i, bookType) then
-                text = GREY:format(text .. ", passive")
-            end
-            table.insert(abilities, text)
-        end
+    for _, ability in ipairs(ns:GetPetAbilities()) do
+        local text = ability.rank and (ability.name .. " (" .. ability.rank .. ")") or ability.name
+        table.insert(abilities, ability.passive and GREY:format(text .. ", passive") or text)
     end
     return abilities
 end
@@ -199,6 +187,10 @@ local function DetailLines(pet)
         table.insert(lines, "Happiness: " .. HAPPINESS[happiness])
     end
     local foods = { Call(GetPetFoodTypes) }
+    local familyData = pet.family and ns.FamilyData and ns.FamilyData[pet.family]
+    if #foods == 0 and familyData then
+        foods = familyData.diet
+    end
     if #foods > 0 then
         table.insert(lines, "Eats: " .. table.concat(foods, ", "))
     end

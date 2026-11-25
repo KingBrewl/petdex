@@ -144,6 +144,58 @@ local function IdentifyCurrentPet()
 end
 
 ---------------------------------------------------------------------------
+-- Pet abilities
+---------------------------------------------------------------------------
+local function SafeCall(fn, ...)
+    if type(fn) ~= "function" then return end
+    local ok, a, b = pcall(fn, ...)
+    if ok and not ns.IsSecret(a) and not ns.IsSecret(b) then
+        return a, b
+    end
+end
+
+-- The active pet's spellbook: { { name, rank, passive }, ... }.
+function ns:GetPetAbilities()
+    local abilities = {}
+    local count = SafeCall(HasPetSpells)
+    if not count or count == 0 then return abilities end
+    local bookType = BOOKTYPE_PET or "pet"
+    for i = 1, count do
+        local name, rank = SafeCall(GetSpellBookItemName, i, bookType)
+        if not name then
+            name, rank = SafeCall(GetSpellName, i, bookType)
+        end
+        if name then
+            table.insert(abilities, { name = name, rank = (rank ~= "" and rank) or nil,
+                passive = SafeCall(IsPassiveSpell, i, bookType) and true or nil })
+        end
+    end
+    return abilities
+end
+
+-- Learned from the pet trainer, not from the beast.
+local TRAINER_ABILITIES = { Growl = true }
+
+-- Right after a tame, the new pet knows exactly what this beast teaches.
+-- Its spellbook can take a moment to fill, so try a few times.
+local function RecordTaught(npcID, attempt)
+    attempt = attempt or 1
+    local taught = {}
+    for _, ability in ipairs(ns:GetPetAbilities()) do
+        if not TRAINER_ABILITIES[ability.name] then
+            table.insert(taught, ability)
+        end
+    end
+    if #taught == 0 and attempt < 3 then
+        C_Timer.After(3, function() RecordTaught(npcID, attempt + 1) end)
+        return
+    end
+    ns.db.taught[npcID] = { abilities = taught, time = time(), level = SafeCall(UnitLevel, "pet") }
+    ns:Debug("recorded", #taught, "abilities taught by", npcID)
+    if ns.OnCollectionChanged then ns:OnCollectionChanged() end
+end
+
+---------------------------------------------------------------------------
 -- Taming: capture the target when Tame Beast starts (it's the only moment we
 -- can see the wild creature's GUID), then confirm when the new pet appears.
 ---------------------------------------------------------------------------
@@ -171,6 +223,7 @@ local function CheckPendingTame()
     pendingTame = nil
     ns:MarkTamed(tame.npcID, tame.info, "tame")
     LinkCurrentPet(tame.npcID)
+    C_Timer.After(1, function() RecordTaught(tame.npcID) end)
 end
 
 ns:On("UNIT_SPELLCAST_START", OnCastStart)

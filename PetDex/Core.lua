@@ -108,6 +108,9 @@ local function InitDB()
     db.discovered = db.discovered or {}
     db.chars = db.chars or {}
     db.achievements = db.achievements or {} -- [id] = time earned (Points.lua)
+    -- [npcID] = { abilities = { { name, rank, passive } }, time, level }:
+    -- what a beast's pet knew right after it was tamed (Tracking.lua)
+    db.taught = db.taught or {}
     db.modelCache = db.modelCache or {}
     db.modelCache.sizes = db.modelCache.sizes or {}
     db.modelCache.npcDisplay = db.modelCache.npcDisplay or {}
