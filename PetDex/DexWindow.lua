@@ -209,21 +209,28 @@ local function CombatLines(info, lines)
     if beast and beast.school then
         table.insert(lines, ("Deals %s damage"):format(beast.school))
     end
-    -- What taming it teaches, as recorded when a beast of this look was
-    -- tamed (the game data doesn't say).
-    local taught
+    -- What taming it teaches: recorded in game if a beast of this look was
+    -- tamed, else the game data.
+    local taught, source
     for _, npcID in ipairs(ns:GetLookNPCs(info.lookID)) do
-        taught = taught or ns.db.taught[npcID]
+        local list, from = ns:GetTaught(npcID)
+        if list and (not taught or (from == "recorded" and source ~= "recorded")) then
+            taught, source = list, from
+        end
     end
-    if taught and #taught.abilities > 0 then
+    if taught and #taught > 0 then
         local names = {}
-        for _, ability in ipairs(taught.abilities) do
-            local text = ability.rank and (ability.name .. " " .. ability.rank:gsub("Rank ", "")) or ability.name
+        for _, ability in ipairs(taught) do
+            local text = ability.rank and (ability.name .. " " .. (ability.rank:gsub("Rank ", ""))) or ability.name
+            if ability.chance and ability.chance < 100 then
+                text = text .. (" (%d%%)"):format(ability.chance)
+            end
             table.insert(names, ability.passive and GREY:format(text) or text)
         end
-        table.insert(lines, "Taming teaches: " .. table.concat(names, ", "))
+        table.insert(lines, "Taming teaches: " .. table.concat(names, ", ")
+            .. (source == "recorded" and GREY:format("  (recorded)") or ""))
     elseif taught then
-        table.insert(lines, GREY:format("Taming teaches nothing new"))
+        table.insert(lines, GREY:format("Taming teaches no abilities"))
     else
         table.insert(lines, GREY:format("Tame it to record which abilities it teaches."))
     end

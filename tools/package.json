@@ -1,0 +1,11 @@
+{
+  "name": "petdex-tools",
+  "private": true,
+  "description": "Data importers for PetDex",
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "devDependencies": {
+    "@js-temporal/polyfill": "^0.5.1",
+    "@rhyster/wow-casc-dbc": "2.17.2"
+  }
+}

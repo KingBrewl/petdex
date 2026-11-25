@@ -100,6 +100,26 @@ function ns:GetBeastZone(beast)
     return zoneCache[key] or nil
 end
 
+-- What taming a beast teaches: { { name, rank = "Rank 4", passive } },
+-- and where that comes from: "recorded" (seen in game right after a tame,
+-- so it's Forever's own behaviour) or "data" (game data: Classic's spell
+-- sets, Data/PetSpells.lua). Nil when neither knows the beast.
+function ns:GetTaught(npcID)
+    local recorded = self.db.taught[npcID]
+    if recorded then
+        return recorded.abilities or {}, "recorded"
+    end
+    local beast = ns.Beasts[npcID]
+    if not beast then return end
+    local set = beast.petSpells and ns.PetSpellSets and ns.PetSpellSets[beast.petSpells]
+    local list = {}
+    for _, ability in ipairs(set or {}) do
+        table.insert(list, { name = ability.name, rank = ability.rank and ("Rank " .. ability.rank) or nil,
+            chance = ability.chance })
+    end
+    return list, "data"
+end
+
 -- Spawn rarity of the NPC (rare spawns are worth announcing even when their
 -- look is common).
 function ns:IsRare(npcID)

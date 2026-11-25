@@ -2,9 +2,10 @@
 -- rank and the beasts that teach it, where they are, whether you can tame
 -- them now, and a map pin.
 --
--- Which beast teaches what isn't in the game data, so this is built from
--- what PetDex recorded right after tames (ns.db.taught). What you already
--- know comes from your Beast Training window (char.training).
+-- What each beast teaches comes from the game data (Classic's spell sets,
+-- Data/PetSpells.lua), overridden by what PetDex records right after tames.
+-- What you already know comes from your Beast Training window
+-- (char.training).
 local _, ns = ...
 
 local LIST_WIDTH = 230
@@ -44,11 +45,13 @@ local function AbilityNames(taughtIndex, known)
     return names
 end
 
--- { [abilityName] = { [rank] = { npcID, ... } } } from the recordings.
+-- { [abilityName] = { [rank] = { npcID, ... } } } for every beast: what
+-- PetDex recorded in game, else the game data (ns:GetTaught).
 local function TaughtIndex()
     local index = {}
-    for npcID, record in pairs(ns.db.taught) do
-        for _, ability in ipairs(record.abilities or {}) do
+    local function add(npcID)
+        local list = ns:GetTaught(npcID)
+        for _, ability in ipairs(list or {}) do
             if not ability.passive then
                 local rank = ns.RankNumber(ability.rank)
                 index[ability.name] = index[ability.name] or {}
@@ -56,6 +59,10 @@ local function TaughtIndex()
                 table.insert(index[ability.name][rank], npcID)
             end
         end
+    end
+    for npcID in pairs(ns.Beasts) do add(npcID) end
+    for npcID in pairs(ns.db.taught) do
+        if not ns.Beasts[npcID] then add(npcID) end
     end
     return index
 end
@@ -314,7 +321,7 @@ local function Refresh(view)
     end
 
     view.empty:SetShown(#entries == 0)
-    view.empty:SetText(("No beast has been recorded teaching %s yet.\n\nPetDex records what a beast teaches when you tame it: the new pet's abilities are saved against that beast. Each tame fills this in."):format(name or "this"))
+    view.empty:SetText(("No beast is known to teach %s.\n\nIt may be learned from a pet trainer instead, or come from a beast PetDex hasn't seen. When you tame a beast, PetDex records what it teaches."):format(name or "this"))
 
     local perPage = math.max(1, math.floor((view.detail:GetHeight() - TOP - PAGER_HEIGHT) / BEAST_ROW_HEIGHT))
     view.pages = math.max(1, math.ceil(#entries / perPage))

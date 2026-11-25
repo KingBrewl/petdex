@@ -10,6 +10,7 @@ Data\Beasts.lua
 Data\Overrides.lua
 Data\Families.lua
 Data\FamilyData.lua
+Data\PetSpells.lua
 Collection.lua
 Map.lua
 Points.lua
