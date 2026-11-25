@@ -19,6 +19,7 @@ New-Item -ItemType Junction `
 | `Data/Overrides.lua` | Hand-made corrections on top of the generated data |
 | `Collection.lua` | Seen/tamed records, beasts discovered in game, stats |
 | `Tracking.lua` | Sightings, tame detection, active pet and stable backfill |
+| `Skin.lua` | Native look and sound: game backdrops, bars, page buttons and UI sounds |
 | `BeastStage.lua` | A beast's 3D model on a lit stage in its dex state (tamed, seen, silhouette), auto-framed |
 | `DexWindow.lua` | The dex window (`/petdex`): families, looks grouped by model, and a viewer |
 | `Toast.lua` | Popup (with sound) when a beast is documented (first seen) or tamed |
