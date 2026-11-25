@@ -1,14 +1,17 @@
 -- Overview tab: your totals, recent discoveries, and every family's progress
--- (click a family to open it in the Dex).
+-- laid out like the character window's Reputation pane (click a family to
+-- open it in the Dex).
 local _, ns = ...
 
-local SUMMARY_WIDTH = 330
+local SUMMARY_WIDTH = 320
 local RECENT_COUNT = 6
-local RECENT_ROW_HEIGHT = 34
-local FAMILY_ROW_HEIGHT = 38
-local GOLD = { 1, 0.82, 0 }
-local GREEN = { 0.25, 0.75, 0.25 }
+local RECENT_ROW_HEIGHT = 32
+local FAMILY_ROW_HEIGHT = 26
+local FAMILY_NAME_WIDTH = 104
+local GOLD = { 0.9, 0.7, 0.15 }
+local GREEN = { 0.25, 0.7, 0.25 }
 local QUEST_HIGHLIGHT = "Interface\\QuestFrame\\UI-QuestLogTitleHighlight"
+local TAMED_ICON = "Interface\\Icons\\Ability_Hunter_BeastTaming"
 
 local function TimeAgo(timestamp)
     local seconds = time() - timestamp
@@ -16,10 +19,6 @@ local function TimeAgo(timestamp)
     if seconds < 3600 then return ("%d min ago"):format(seconds / 60) end
     if seconds < 86400 then return ("%d h ago"):format(seconds / 3600) end
     return ("%d days ago"):format(seconds / 86400)
-end
-
-local function ColorCode(color)
-    return ("|cff%02x%02x%02x"):format(math.floor(color[1] * 255), math.floor(color[2] * 255), math.floor(color[3] * 255))
 end
 
 -- Looks documented most recently, newest first (by first sighting).
@@ -57,55 +56,54 @@ end
 
 local function Create(parent)
     local ui = ns.DexUI
+    local Skin = ns.Skin
     local view = CreateFrame("Frame", nil, parent)
 
     -- Left: totals and recent discoveries.
-    local summary = ns.Skin.CreateInset(view)
+    local summary = Skin.CreateInset(view)
     summary:SetPoint("TOPLEFT", view, "TOPLEFT", ui.INSET.left, -ui.BODY_TOP)
     summary:SetPoint("BOTTOMLEFT", view, "BOTTOMLEFT", ui.INSET.left, ui.INSET.bottom)
     summary:SetWidth(SUMMARY_WIDTH)
     view.summary = summary
 
-    local title = summary:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local title = Skin.CreateHeading(summary, "Your PetDex", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", ui.PAD, -ui.PAD)
-    title:SetText("Your PetDex")
+    title.divider:SetPoint("RIGHT", summary, "RIGHT", -ui.PAD, 0)
 
     view.bigNumber = summary:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
     view.bigNumber:SetTextColor(1, 1, 1)
-    view.bigNumber:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -12)
-    view.bigLabel = summary:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-    view.bigLabel:SetPoint("BOTTOMLEFT", view.bigNumber, "BOTTOMRIGHT", 8, 3)
-    view.bigLabel:SetText("beasts documented")
+    view.bigNumber:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -18)
+    view.bigLabel = summary:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    view.bigLabel:SetPoint("BOTTOMLEFT", view.bigNumber, "BOTTOMRIGHT", 8, 2)
+    view.bigLabel:SetText("documented")
 
-    view.seenBar = ns.Skin.CreateBar(summary, 14, GOLD)
-    view.seenBar:SetPoint("TOPLEFT", view.bigNumber, "BOTTOMLEFT", 0, -10)
-    view.seenBar:SetPoint("RIGHT", summary, "RIGHT", -ui.PAD, 0)
-    view.seenText = view.seenBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    view.seenText:SetPoint("CENTER")
+    local function LabelledBar(label, color, anchor, gap)
+        local text = summary:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        text:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -gap)
+        text:SetText(label)
+        local bar = Skin.CreateSkillBar(summary, 20, color)
+        bar:SetPoint("TOPLEFT", text, "BOTTOMLEFT", -2, -3)
+        bar:SetPoint("RIGHT", summary, "RIGHT", -ui.PAD, 0)
+        return bar
+    end
+    view.seenBar = LabelledBar("Documented", GOLD, view.bigNumber, 12)
+    view.tamedBar = LabelledBar("Tamed", GREEN, view.seenBar, 8)
+    view.rareBar = LabelledBar("Rare beasts documented", ns.RARITY_COLORS.rare, view.tamedBar, 8)
+    view.uniqueBar = LabelledBar("Unique beasts documented", ns.RARITY_COLORS.unique, view.rareBar, 8)
 
-    view.tamedBar = ns.Skin.CreateBar(summary, 14, GREEN)
-    view.tamedBar:SetPoint("TOPLEFT", view.seenBar, "BOTTOMLEFT", 0, -8)
-    view.tamedBar:SetPoint("RIGHT", summary, "RIGHT", -ui.PAD, 0)
-    view.tamedText = view.tamedBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    view.tamedText:SetPoint("CENTER")
-
-    view.rarities = summary:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    view.rarities:SetPoint("TOPLEFT", view.tamedBar, "BOTTOMLEFT", 0, -12)
-    view.rarities:SetJustifyH("LEFT")
-    view.rarities:SetSpacing(4)
-
-    local recentTitle = summary:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    recentTitle:SetPoint("TOPLEFT", view.rarities, "BOTTOMLEFT", 0, -18)
-    recentTitle:SetText("Recent discoveries")
+    local recentTitle = Skin.CreateHeading(summary, "Recent discoveries")
+    recentTitle:SetPoint("TOPLEFT", view.uniqueBar, "BOTTOMLEFT", 2, -20)
+    recentTitle.divider:SetPoint("RIGHT", summary, "RIGHT", -ui.PAD, 0)
     view.recentEmpty = summary:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    view.recentEmpty:SetPoint("TOPLEFT", recentTitle, "BOTTOMLEFT", 0, -8)
+    view.recentEmpty:SetPoint("TOPLEFT", recentTitle, "BOTTOMLEFT", 0, -16)
     view.recentEmpty:SetText("Target beasts in the wild to document them.")
 
     view.recent = {}
     for i = 1, RECENT_COUNT do
         local row = CreateRow(summary, RECENT_ROW_HEIGHT)
-        row:SetPoint("TOPLEFT", recentTitle, "BOTTOMLEFT", -6, -4 - (i - 1) * RECENT_ROW_HEIGHT)
+        row:SetPoint("TOPLEFT", recentTitle, "BOTTOMLEFT", -6, -14 - (i - 1) * RECENT_ROW_HEIGHT)
         row:SetPoint("RIGHT", summary, "RIGHT", -ui.PAD + 6, 0)
+        Skin.Stripe(row, i)
         row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         row.name:SetPoint("TOPLEFT", 6, -3)
         row.when = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -113,22 +111,22 @@ local function Create(parent)
         row.sub = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         row.sub:SetPoint("TOPLEFT", row.name, "BOTTOMLEFT", 0, -2)
         row:SetScript("OnClick", function(self)
-            ns.Skin.PlaySound("select")
+            Skin.PlaySound("select")
             ns:OpenDexAt(self.lookID)
         end)
         view.recent[i] = row
     end
 
-    -- Right: every family's progress.
-    local familyPanel = ns.Skin.CreateInset(view)
+    -- Right: every family's progress, like the Reputation pane.
+    local familyPanel = Skin.CreateInset(view)
     familyPanel:SetPoint("TOPLEFT", summary, "TOPRIGHT", 4, 0)
     familyPanel:SetPoint("BOTTOMRIGHT", view, "BOTTOMRIGHT", -ui.INSET.right, ui.INSET.bottom)
     view.familyPanel = familyPanel
-    local familiesTitle = familyPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local familiesTitle = Skin.CreateHeading(familyPanel, "Families", "GameFontNormalLarge")
     familiesTitle:SetPoint("TOPLEFT", ui.PAD, -ui.PAD)
-    familiesTitle:SetText("Families")
+    familiesTitle.divider:SetPoint("RIGHT", familyPanel, "RIGHT", -ui.PAD, 0)
     local hint = familyPanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    hint:SetPoint("LEFT", familiesTitle, "RIGHT", 10, -1)
+    hint:SetPoint("BOTTOMRIGHT", familiesTitle.divider, "TOPRIGHT", 0, 2)
     hint:SetText("Click a family to open it in the Dex")
     view.familyRows = {}
     return view
@@ -139,12 +137,22 @@ local function FamilyRow(view, index)
     if row then return row end
     row = CreateRow(view.familyPanel, FAMILY_ROW_HEIGHT)
     row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    row.name:SetPoint("TOPLEFT", 6, -4)
-    row.count = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.count:SetPoint("TOPRIGHT", -6, -5)
-    row.bar = ns.Skin.CreateBar(row, 6, GOLD)
-    row.bar:SetPoint("BOTTOMLEFT", 6, 8)
-    row.bar:SetPoint("BOTTOMRIGHT", -6, 8)
+    row.name:SetPoint("LEFT", 6, 0)
+    row.name:SetWidth(FAMILY_NAME_WIDTH)
+    row.name:SetJustifyH("LEFT")
+    -- Tamed count with the Beast Taming icon, at the right.
+    row.tamed = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.tamed:SetPoint("RIGHT", -6, 0)
+    row.tamed:SetWidth(22)
+    row.tamed:SetJustifyH("RIGHT")
+    row.tamedIcon = row:CreateTexture(nil, "ARTWORK")
+    row.tamedIcon:SetSize(14, 14)
+    row.tamedIcon:SetPoint("RIGHT", row.tamed, "LEFT", -2, 0)
+    row.tamedIcon:SetTexture(TAMED_ICON)
+    row.tamedIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    row.bar = ns.Skin.CreateSkillBar(row, 20, GOLD)
+    row.bar:SetPoint("LEFT", FAMILY_NAME_WIDTH + 10, 0)
+    row.bar:SetPoint("RIGHT", row.tamedIcon, "LEFT", -6, 0)
     row:SetScript("OnClick", function(self)
         ns.Skin.PlaySound("tab")
         ns:OpenDexFamily(self.familyName)
@@ -172,17 +180,13 @@ local function Refresh(view)
         end
     end
     view.bigNumber:SetText(("%d / %d"):format(seen, total))
-    view.seenBar:SetValue(total > 0 and seen / total or 0)
-    view.seenText:SetText(("Documented  %d%%"):format(total > 0 and math.floor(seen / total * 100) or 0))
-    view.tamedBar:SetValue(total > 0 and tamed / total or 0)
-    view.tamedText:SetText(("Tamed  %d / %d"):format(tamed, total))
-    local rarityLines = {}
-    for _, rarity in ipairs({ "rare", "unique" }) do
-        local counts = byRarity[rarity] or { total = 0, seen = 0 }
-        table.insert(rarityLines, ("%s%s|r documented  %d / %d"):format(ColorCode(ns.RARITY_COLORS[rarity]),
-            ui.RARITY_LABELS[rarity], counts.seen, counts.total))
-    end
-    view.rarities:SetText(table.concat(rarityLines, "\n"))
+    view.seenBar:SetProgress(seen, total, ("%d / %d  (%d%%)"):format(seen, total,
+        total > 0 and math.floor(seen / total * 100) or 0))
+    view.tamedBar:SetProgress(tamed, total)
+    local rare = byRarity.rare or { total = 0, seen = 0 }
+    local unique = byRarity.unique or { total = 0, seen = 0 }
+    view.rareBar:SetProgress(rare.seen, rare.total)
+    view.uniqueBar:SetProgress(unique.seen, unique.total)
 
     -- Recent discoveries.
     local recent = RecentDiscoveries(RECENT_COUNT)
@@ -198,15 +202,17 @@ local function Refresh(view)
             local zone = ns:GetBeastZone(info.beast)
             row.sub:SetText(zone and (info.family .. "  ·  " .. zone) or info.family)
             row.when:SetText(TimeAgo(entry.time))
-            row:Show()
+            -- In a short window, drop rows that would hang below the panel.
+            local bottom, panelBottom = row:GetBottom(), view.summary:GetBottom()
+            row:SetShown(not (bottom and panelBottom and bottom < panelBottom + 4))
         else
             row:Hide()
         end
     end
 
-    -- Families, in two columns.
+    -- Families, in one or two columns depending on the width.
     local panelWidth = view.familyPanel:GetWidth()
-    local columns = panelWidth > 400 and 2 or 1
+    local columns = panelWidth > 520 and 2 or 1
     local columnWidth = (panelWidth - ui.PAD * (columns + 1)) / columns
     local rowsPerColumn = math.ceil(#families / columns)
     for index, family in ipairs(families) do
@@ -215,12 +221,13 @@ local function Refresh(view)
         local line = (index - 1) % rowsPerColumn
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", view.familyPanel, "TOPLEFT", ui.PAD + column * (columnWidth + ui.PAD),
-            -(ui.PAD + 34 + line * FAMILY_ROW_HEIGHT))
+            -(ui.PAD + 40 + line * (FAMILY_ROW_HEIGHT + 4)))
         row:SetWidth(columnWidth)
+        ns.Skin.Stripe(row, line + 1)
         row.familyName = family.name
         row.name:SetText(family.name)
-        row.count:SetText(("%d / %d   |cff40c040%d tamed|r"):format(family.seen, family.total, family.tamed))
-        row.bar:SetValue(family.total > 0 and family.seen / family.total or 0)
+        row.bar:SetProgress(family.seen, family.total)
+        row.tamed:SetText(family.tamed)
         row:Show()
     end
     for i = #families + 1, #view.familyRows do

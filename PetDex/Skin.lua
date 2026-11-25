@@ -104,6 +104,81 @@ function Skin.CreateBar(parent, height, color)
     return bar
 end
 
+-- A progress bar like the character window's Skills and Reputation bars:
+-- the skill bar texture in a thin slot border, with text centred on it
+-- (bar.text). Fill and text are set with bar:SetProgress(value, max).
+function Skin.CreateSkillBar(parent, height, color)
+    local holder = Skin.CreateFrame("Frame", parent, "slot")
+    holder:SetHeight(height)
+    local bar = CreateFrame("StatusBar", nil, holder)
+    bar:SetPoint("TOPLEFT", 3, -3)
+    bar:SetPoint("BOTTOMRIGHT", -3, 3)
+    bar:SetStatusBarTexture("Interface\\PaperDollInfoFrame\\UI-Character-Skills-Bar")
+    bar:SetStatusBarColor(color[1], color[2], color[3])
+    bar:SetMinMaxValues(0, 1)
+    local track = bar:CreateTexture(nil, "BACKGROUND")
+    track:SetAllPoints()
+    track:SetTexture("Interface\\PaperDollInfoFrame\\UI-Character-Skills-Bar")
+    track:SetVertexColor(color[1] * 0.25, color[2] * 0.25, color[3] * 0.25, 0.8)
+    holder.text = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    holder.text:SetPoint("CENTER", 0, 1)
+    holder.bar = bar
+    function holder:SetProgress(value, max, label)
+        bar:SetValue(max > 0 and value / max or 0)
+        self.text:SetText(label or ("%d / %d"):format(value, max))
+    end
+    return holder
+end
+
+-- A section heading in gold with the quest log's divider ornament under it.
+function Skin.CreateHeading(parent, text, template)
+    local heading = parent:CreateFontString(nil, "OVERLAY", template or "GameFontNormal")
+    heading:SetText(text)
+    local divider = parent:CreateTexture(nil, "ARTWORK")
+    divider:SetTexture("Interface\\QuestFrame\\UI-HorizontalBreak")
+    divider:SetHeight(12)
+    divider:SetPoint("TOPLEFT", heading, "BOTTOMLEFT", -6, -1)
+    heading.divider = divider
+    return heading
+end
+
+-- A column heading button like the Who list's (WhoFrameColumnHeaderTemplate),
+-- or plain gold text where the client lacks it.
+local headerCount = 0
+function Skin.CreateColumnHeader(parent, text, width)
+    headerCount = headerCount + 1
+    local ok, header = pcall(CreateFrame, "Button", "PetDexColumnHeader" .. headerCount, parent,
+        "WhoFrameColumnHeaderTemplate")
+    if ok and header then
+        header:SetText(text)
+        if WhoFrameColumn_SetWidth then
+            pcall(WhoFrameColumn_SetWidth, header, width)
+        else
+            header:SetWidth(width)
+        end
+        header:Disable() -- headings only; the list has a fixed order
+        local fontString = header:GetFontString()
+        if fontString then fontString:SetTextColor(1, 0.82, 0) end
+        return header
+    end
+    local plain = CreateFrame("Frame", nil, parent)
+    plain:SetSize(width, 20)
+    local label = plain:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("LEFT", 6, 0)
+    label:SetText(text)
+    return plain
+end
+
+-- Alternating row shading, as in Blizzard's long lists.
+function Skin.Stripe(row, index)
+    if not row.stripe then
+        row.stripe = row:CreateTexture(nil, "BACKGROUND")
+        row.stripe:SetAllPoints()
+        row.stripe:SetColorTexture(1, 1, 1, 0.04)
+    end
+    row.stripe:SetShown(index % 2 == 0)
+end
+
 -- The spellbook's round previous/next page buttons. direction: "Prev"/"Next".
 function Skin.CreatePageButton(parent, direction)
     local button = CreateFrame("Button", nil, parent)

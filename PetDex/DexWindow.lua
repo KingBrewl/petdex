@@ -795,16 +795,28 @@ local ShowTab
 local function CreateTabs()
     frame.tabs = {}
     local blizzardTabs = true
+    local template = "PanelTabButtonTemplate"
+    -- Newer tab art (atlases) sits side by side; the older art is drawn to
+    -- overlap its neighbour.
+    local gap = -15
     for index, tab in ipairs(TABS) do
         local name = "PetDexFrameTab" .. index
         local ok, button = pcall(CreateFrame, "Button", name, frame, "PanelTabButtonTemplate")
         if not ok then
+            template = "CharacterFrameTabButtonTemplate"
             ok, button = pcall(CreateFrame, "Button", name, frame, "CharacterFrameTabButtonTemplate")
         end
         if not ok then
             blizzardTabs = false
+            template = "UIPanelButtonTemplate"
             button = CreateFrame("Button", name, frame, "UIPanelButtonTemplate")
             button:SetSize(96, 24)
+        end
+        if index == 1 and blizzardTabs then
+            local left = button.Left or button.LeftActive or _G[name .. "Left"]
+            local atlas = left and left.GetAtlas and left:GetAtlas()
+            if atlas and atlas ~= "" then gap = 3 end
+            ns:Debug("tabs:", template, atlas and ("atlas " .. atlas) or "classic art", "gap", gap)
         end
         button:SetID(index)
         button:SetText(tab.label)
@@ -815,7 +827,7 @@ local function CreateTabs()
             button:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 12, blizzardTabs and 2 or -2)
         else
             -- Blizzard's tab art overlaps its neighbours.
-            button:SetPoint("LEFT", frame.tabs[index - 1], "RIGHT", blizzardTabs and -14 or 4, 0)
+            button:SetPoint("LEFT", frame.tabs[index - 1], "RIGHT", blizzardTabs and gap or 4, 0)
         end
         button:SetScript("OnClick", function()
             if currentTab ~= tab.key then

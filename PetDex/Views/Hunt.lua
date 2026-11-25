@@ -5,7 +5,7 @@
 local _, ns = ...
 
 local ROW_HEIGHT = 30
-local TOP = 74 -- title, summary and column headings
+local TOP = 86 -- title, summary and column headings
 local PAGER_HEIGHT = 40
 local QUEST_HIGHLIGHT = "Interface\\QuestFrame\\UI-QuestLogTitleHighlight"
 local ICONS = {
@@ -175,20 +175,29 @@ local function Create(parent)
     panel:SetPoint("BOTTOMRIGHT", view, "BOTTOMRIGHT", -ui.INSET.right, ui.INSET.bottom)
     view.panel = panel
 
-    view.title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    view.title = ns.Skin.CreateHeading(panel, "", "GameFontNormalLarge")
     view.title:SetPoint("TOPLEFT", ui.PAD, -ui.PAD)
+    view.title.divider:SetPoint("RIGHT", panel, "RIGHT", -ui.PAD, 0)
     view.summary = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     view.summary:SetPoint("LEFT", view.title, "RIGHT", 12, -1)
 
-    -- Column headings.
-    local headings = CreateFrame("Frame", nil, panel)
-    headings:SetPoint("TOPLEFT", ui.PAD, -(TOP - 20))
-    headings:SetPoint("TOPRIGHT", -ui.PAD, -(TOP - 20))
-    headings:SetHeight(18)
-    for column, label in pairs({ name = "Beast", level = "Level", rarity = "Rarity", taming = "Tame", respawn = "Respawn" }) do
-        local text = headings:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        text:SetPoint("LEFT", COL[column], 0)
-        text:SetText(label)
+    -- Column headings, in Blizzard's list-header buttons, side by side.
+    local headings = {
+        { "Beast", COL.level },
+        { "Level", COL.rarity - COL.level },
+        { "Rarity", COL.taming - COL.rarity },
+        { "Tame", COL.respawn - COL.taming },
+        { "Respawn", 150 },
+    }
+    local previous
+    for _, heading in ipairs(headings) do
+        local header = ns.Skin.CreateColumnHeader(panel, heading[1], heading[2])
+        if previous then
+            header:SetPoint("LEFT", previous, "RIGHT", -2, 0)
+        else
+            header:SetPoint("TOPLEFT", ui.PAD, -(TOP - 24))
+        end
+        previous = header
     end
 
     view.empty = panel:CreateFontString(nil, "OVERLAY", "GameFontDisable")
@@ -252,6 +261,7 @@ local function Refresh(view)
         row:SetPoint("TOPLEFT", view.panel, "TOPLEFT", ui.PAD, -(TOP + (i - 1) * ROW_HEIGHT))
         row:SetPoint("RIGHT", view.panel, "RIGHT", -ui.PAD, 0)
         FillRow(row, data)
+        ns.Skin.Stripe(row, i)
         row:Show()
     end
     for i = shown + 1, #view.rows do
