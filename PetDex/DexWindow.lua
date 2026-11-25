@@ -90,11 +90,7 @@ local function LevelText(beast)
 end
 
 local function ZoneText(beast)
-    if not beast then return end
-    if beast.zone then return beast.zone end
-    for zone in pairs(beast.zones or {}) do
-        return zone
-    end
+    return ns:GetBeastZone(beast)
 end
 
 local function StageState(info)
