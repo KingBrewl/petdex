@@ -11,6 +11,7 @@ Data\Overrides.lua
 Collection.lua
 Tracking.lua
 Tooltip.lua
+Skin.lua
 BeastStage.lua
 DexWindow.lua
 Toast.lua

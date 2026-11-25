@@ -6,38 +6,11 @@ local _, ns = ...
 
 local WIDTH, HEIGHT = 340, 92
 local SHOW_TIME, FADE_TIME = 4, 0.6
-local GOLD = { 0.79, 0.64, 0.36 }
+local GOLD = { 1, 0.82, 0 }
 
 local toast
 local queue = {}
 local current
-
-local function AddBorder(target, color)
-    local lines = {}
-    for _, side in ipairs({ "TOP", "BOTTOM", "LEFT", "RIGHT" }) do
-        local line = target:CreateTexture(nil, "BORDER")
-        if side == "TOP" or side == "BOTTOM" then
-            line:SetHeight(1)
-            line:SetPoint(side .. "LEFT")
-            line:SetPoint(side .. "RIGHT")
-        else
-            line:SetWidth(1)
-            line:SetPoint("TOP" .. side)
-            line:SetPoint("BOTTOM" .. side)
-        end
-        lines[#lines + 1] = line
-    end
-    for _, line in ipairs(lines) do
-        line:SetColorTexture(color[1], color[2], color[3], 1)
-    end
-    return lines
-end
-
-local function SetBorderColor(lines, color)
-    for _, line in ipairs(lines) do
-        line:SetColorTexture(color[1], color[2], color[3], 1)
-    end
-end
 
 -- The game's own reward sounds, best first per tier; the first one this
 -- client's SOUNDKIT knows is played. Bigger finds, bigger sounds.
@@ -81,19 +54,19 @@ local function Finish()
 end
 
 local function CreateToast()
-    toast = CreateFrame("Button", "PetDexToast", UIParent)
+    -- A native panel, with the model in an item-slot frame.
+    toast = ns.Skin.CreateFrame("Button", UIParent, "panel", "PetDexToast")
     toast:SetSize(WIDTH, HEIGHT)
     toast:SetPoint("TOP", 0, -150)
     toast:SetFrameStrata("HIGH")
     toast:Hide()
 
-    local bg = toast:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0.06, 0.065, 0.08, 0.96)
-    toast.border = AddBorder(toast, GOLD)
-
-    toast.stage = ns.CreateBeastStage(toast, 80, 80)
-    toast.stage.frame:SetPoint("LEFT", 6, 0)
+    local slot = ns.Skin.CreateFrame("Frame", toast, "slot")
+    toast.stage = ns.CreateBeastStage(toast, 76, 76)
+    toast.stage.frame:SetPoint("LEFT", 12, 0)
+    slot:SetPoint("TOPLEFT", toast.stage.frame, "TOPLEFT", -4, 4)
+    slot:SetPoint("BOTTOMRIGHT", toast.stage.frame, "BOTTOMRIGHT", 4, -4)
+    toast.slot = slot
 
     toast.title = toast:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     toast.title:SetPoint("TOPLEFT", toast.stage.frame, "TOPRIGHT", 12, -4)
@@ -159,7 +132,9 @@ ShowNext = function()
     local zone = ns:GetBeastZone(info.beast)
     toast.sub:SetText(zone and (info.family .. "  ·  " .. zone) or info.family)
     toast.progress:SetText(ProgressText(info))
-    SetBorderColor(toast.border, (entry.kind == "tamed" or rare) and rarityColor or GOLD)
+    local accent = (entry.kind == "tamed" or rare) and rarityColor or GOLD
+    ns.Skin.SetBorderColor(toast, accent)
+    ns.Skin.SetBorderColor(toast.slot, accent)
 
     toast.stage:SetBeast({ npcID = info.npcID, displayID = info.displayID,
         state = entry.kind == "tamed" and "tamed" or "seen", rarity = info.rarity, spirit = info.spirit })

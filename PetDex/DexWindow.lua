@@ -26,15 +26,19 @@ local CONTENT_TOP = PAD + 30 -- below the family title
 local MIN_WIDTH, MIN_HEIGHT = 880, 560
 local MAX_WIDTH, MAX_HEIGHT = 2000, 1300
 
+-- Space taken by the window's border, set when the window is built (the
+-- native frame and the dialog fallback have different borders).
+local INSET = { left = 0, right = 0, bottom = 0 }
+
 -- The grid area follows the window size (see UpdateMetrics).
 local CONTENT_WIDTH, CONTENT_HEIGHT, COLUMNS
 local BODY_HEIGHT, VIEWER_STAGE_HEIGHT
 
 local function UpdateMetrics(width, height)
-    CONTENT_WIDTH = width - SIDEBAR_WIDTH - VIEWER_WIDTH
-    CONTENT_HEIGHT = height - BODY_TOP - CONTENT_TOP - PAGER_HEIGHT -- room for rows
+    CONTENT_WIDTH = width - SIDEBAR_WIDTH - VIEWER_WIDTH - INSET.left - INSET.right
+    CONTENT_HEIGHT = height - BODY_TOP - INSET.bottom - CONTENT_TOP - PAGER_HEIGHT -- room for rows
     COLUMNS = math.max(1, math.floor((CONTENT_WIDTH - 2 * PAD + TILE_GAP) / (TILE_WIDTH + TILE_GAP)))
-    BODY_HEIGHT = height - BODY_TOP
+    BODY_HEIGHT = height - BODY_TOP - INSET.bottom
     -- The viewer's stage gives up height first, so its text never overlaps
     -- the record box in a short window.
     VIEWER_STAGE_HEIGHT = math.max(VIEWER_STAGE_MIN,
@@ -50,10 +54,10 @@ end
 UpdateMetrics(WIDTH, HEIGHT)
 
 local GOLD = { 0.79, 0.64, 0.36 }
-local DIM = { 0.23, 0.24, 0.27 }
 local RARITY_LABELS = { common = "Common", rare = "Rare", unique = "Unique" }
 local ANIMATIONS = { 0, 4, 5, 16 } -- stand, walk, run, attack
 local TAMED_ICON = "Interface\\Icons\\Ability_Hunter_BeastTaming"
+local Skin = ns.Skin
 
 local frame
 local families = {}
@@ -66,38 +70,6 @@ local animIndex = 1
 ---------------------------------------------------------------------------
 -- Small helpers
 ---------------------------------------------------------------------------
-local function AddBorder(target, color, alpha)
-    local lines = {}
-    for _, side in ipairs({ "TOP", "BOTTOM", "LEFT", "RIGHT" }) do
-        local line = target:CreateTexture(nil, "BORDER")
-        line:SetColorTexture(color[1], color[2], color[3], alpha or 1)
-        if side == "TOP" or side == "BOTTOM" then
-            line:SetHeight(1)
-            line:SetPoint(side .. "LEFT")
-            line:SetPoint(side .. "RIGHT")
-        else
-            line:SetWidth(1)
-            line:SetPoint("TOP" .. side)
-            line:SetPoint("BOTTOM" .. side)
-        end
-        table.insert(lines, line)
-    end
-    return lines
-end
-
-local function SetBorderColor(lines, color)
-    for _, line in ipairs(lines) do
-        line:SetColorTexture(color[1], color[2], color[3], 1)
-    end
-end
-
-local function Fill(target, r, g, b, a, layer)
-    local texture = target:CreateTexture(nil, layer or "BACKGROUND")
-    texture:SetAllPoints()
-    texture:SetColorTexture(r, g, b, a)
-    return texture
-end
-
 local function ColorText(fontString, color)
     fontString:SetTextColor(color[1], color[2], color[3])
 end
@@ -239,22 +211,20 @@ local function UpdateViewer()
 end
 
 local function CreateViewer()
-    viewer = CreateFrame("Frame", nil, frame)
-    viewer:SetPoint("TOPRIGHT", 0, -BODY_TOP)
-    viewer:SetPoint("BOTTOMRIGHT")
+    viewer = Skin.CreateFrame("Frame", frame, "panel")
+    viewer:SetPoint("TOPRIGHT", -INSET.right, -BODY_TOP)
+    viewer:SetPoint("BOTTOMRIGHT", -INSET.right, INSET.bottom)
     viewer:SetWidth(VIEWER_WIDTH)
-    Fill(viewer, 0.045, 0.05, 0.065, 1)
-    local divider = viewer:CreateTexture(nil, "BORDER")
-    divider:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.35)
-    divider:SetWidth(1)
-    divider:SetPoint("TOPLEFT")
-    divider:SetPoint("BOTTOMLEFT")
 
+    -- A slot-style frame around the big stage (created first so it sits
+    -- under the model).
+    local stageBorder = Skin.CreateFrame("Frame", viewer, "slot")
     local stageWidth = VIEWER_WIDTH - 2 * PAD
     viewer.stage = ns.CreateBeastStage(viewer, stageWidth, VIEWER_STAGE_HEIGHT)
     viewer.stage.frame:SetPoint("TOP", 0, -PAD)
     viewer.stage:EnableTurning()
-    AddBorder(viewer.stage.frame, { 0.35, 0.29, 0.17 })
+    stageBorder:SetPoint("TOPLEFT", viewer.stage.frame, "TOPLEFT", -4, 4)
+    stageBorder:SetPoint("BOTTOMRIGHT", viewer.stage.frame, "BOTTOMRIGHT", 4, -4)
 
     local hint = viewer:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     hint:SetPoint("TOPLEFT", viewer.stage.frame, "BOTTOMLEFT", 0, -4)
@@ -285,12 +255,10 @@ local function CreateViewer()
     viewer.note:SetPoint("RIGHT", -PAD, 0)
     viewer.note:SetJustifyH("LEFT")
 
-    local box = CreateFrame("Frame", nil, viewer)
+    local box = Skin.CreateFrame("Frame", viewer, "panel")
     box:SetPoint("BOTTOMLEFT", PAD, PAD + 26)
     box:SetPoint("BOTTOMRIGHT", -PAD, PAD + 26)
     box:SetHeight(64)
-    Fill(box, 0.09, 0.1, 0.13, 1)
-    AddBorder(box, { 0.35, 0.29, 0.17 })
     local boxTitle = box:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     boxTitle:SetPoint("TOPLEFT", 10, -8)
     boxTitle:SetText("Your record")
@@ -306,11 +274,26 @@ end
 ---------------------------------------------------------------------------
 -- Grid of looks, paginated (models aren't clipped by scroll frames)
 ---------------------------------------------------------------------------
+-- Selected: gold. Tamed: its rarity colour, like an item's quality.
+-- Otherwise grey; hovering lightens it.
+local function UpdateTileBorder(tile, hovering)
+    local info = tile.info
+    local color = Skin.BORDER_GREY
+    if info and info == selectedLook then
+        color = Skin.BORDER_GOLD
+    elseif hovering then
+        color = Skin.BORDER_HOVER
+    elseif info and info.status == "tamed" then
+        color = ns.RARITY_COLORS[info.rarity] or Skin.BORDER_GREY
+    end
+    Skin.SetBorderColor(tile, color)
+end
+
 local function SelectLook(info)
     selectedLook = info
     for _, tile in ipairs(tiles) do
         if tile:IsShown() then
-            SetBorderColor(tile.border, tile.info == info and GOLD or DIM)
+            UpdateTileBorder(tile)
         end
     end
     UpdateViewer()
@@ -319,12 +302,11 @@ end
 local function GetTile(index)
     local tile = tiles[index]
     if tile then return tile end
-    tile = CreateFrame("Button", nil, frame.content)
+    tile = Skin.CreateFrame("Button", frame.content, "slot")
     tile:SetSize(TILE_WIDTH, TILE_HEIGHT)
-    Fill(tile, 0.08, 0.085, 0.1, 1)
-    tile.stage = ns.CreateBeastStage(tile, TILE_WIDTH, STAGE_HEIGHT)
-    tile.stage.frame:SetPoint("TOP")
-    tile.border = AddBorder(tile, DIM)
+    -- The stage sits inside the slot border.
+    tile.stage = ns.CreateBeastStage(tile, TILE_WIDTH - 8, STAGE_HEIGHT - 4)
+    tile.stage.frame:SetPoint("TOP", 0, -4)
 
     tile.name = tile:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     tile.name:SetPoint("TOP", tile.stage.frame, "BOTTOM", 0, -5)
@@ -345,13 +327,14 @@ local function GetTile(index)
     tile.badge:SetTexture(TAMED_ICON)
     tile.badge:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-    tile:SetScript("OnClick", function(self) SelectLook(self.info) end)
-    tile:SetScript("OnEnter", function(self)
-        if self.info ~= selectedLook then SetBorderColor(self.border, { 0.5, 0.42, 0.25 }) end
+    tile:SetScript("OnClick", function(self)
+        if self.info ~= selectedLook then
+            Skin.PlaySound("select")
+        end
+        SelectLook(self.info)
     end)
-    tile:SetScript("OnLeave", function(self)
-        SetBorderColor(self.border, self.info == selectedLook and GOLD or DIM)
-    end)
+    tile:SetScript("OnEnter", function(self) UpdateTileBorder(self, true) end)
+    tile:SetScript("OnLeave", function(self) UpdateTileBorder(self) end)
     tiles[index] = tile
     return tile
 end
@@ -393,7 +376,7 @@ local function FillTile(tile, info)
         end
         tile.sub:SetText(sub)
     end
-    SetBorderColor(tile.border, info == selectedLook and GOLD or DIM)
+    UpdateTileBorder(tile)
 end
 
 -- Split the family into pages of rows: a header per model group, then rows
@@ -471,8 +454,12 @@ local function ShowPage()
 end
 
 local function ChangePage(delta)
+    local before = page
     page = math.max(1, math.min(#pages, page + delta))
-    ShowPage()
+    if page ~= before then
+        Skin.PlaySound("page")
+        ShowPage()
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -485,26 +472,27 @@ local function GetFamilyButton(index)
     if button then return button end
     button = CreateFrame("Button", nil, frame.sidebar)
     button:SetWidth(SIDEBAR_WIDTH - 2 * 10)
-    button.selected = Fill(button, 0.16, 0.14, 0.09, 1)
-    button.border = AddBorder(button, GOLD)
-    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
-    highlight:SetAllPoints()
-    highlight:SetColorTexture(1, 1, 1, 0.05)
+    -- The quest log's title highlight, for hover and (tinted) selection.
+    local questHighlight = "Interface\\QuestFrame\\UI-QuestLogTitleHighlight"
+    button.selected = button:CreateTexture(nil, "BACKGROUND")
+    button.selected:SetAllPoints()
+    button.selected:SetTexture(questHighlight)
+    button.selected:SetBlendMode("ADD")
+    button.selected:SetVertexColor(1, 0.82, 0, 0.6)
+    button:SetHighlightTexture(questHighlight, "ADD")
     button.label = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     button.label:SetPoint("LEFT", 8, 2)
     button.count = button:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     button.count:SetPoint("RIGHT", -8, 2)
-    local track = button:CreateTexture(nil, "ARTWORK")
-    track:SetColorTexture(0.05, 0.05, 0.07, 1)
-    track:SetHeight(3)
-    track:SetPoint("BOTTOMLEFT", 8, 4)
-    track:SetPoint("BOTTOMRIGHT", -8, 4)
-    button.bar = button:CreateTexture(nil, "OVERLAY")
-    button.bar:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
-    button.bar:SetHeight(3)
-    button.bar:SetPoint("LEFT", track, "LEFT")
-    button.barWidth = SIDEBAR_WIDTH - 2 * 10 - 16
-    button:SetScript("OnClick", function(self) SelectFamily(self.family) end)
+    button.bar = Skin.CreateBar(button, 3, GOLD)
+    button.bar:SetPoint("BOTTOMLEFT", 8, 3)
+    button.bar:SetPoint("BOTTOMRIGHT", -8, 3)
+    button:SetScript("OnClick", function(self)
+        if not selectedFamily or selectedFamily.name ~= self.family.name then
+            Skin.PlaySound("tab")
+        end
+        SelectFamily(self.family)
+    end)
     familyButtons[index] = button
     return button
 end
@@ -519,12 +507,10 @@ local function UpdateFamilyButtons()
         button.family = family
         button.label:SetText(family.name)
         button.count:SetText(("%d/%d"):format(family.seen, family.total))
-        local share = family.total > 0 and family.seen / family.total or 0
-        button.bar:SetWidth(math.max(1, button.barWidth * share))
-        button.bar:SetShown(share > 0)
+        button.bar:SetValue(family.total > 0 and family.seen / family.total or 0)
         local isSelected = selectedFamily and selectedFamily.name == family.name
         button.selected:SetShown(isSelected)
-        for _, line in ipairs(button.border) do line:SetShown(isSelected) end
+        button.label:SetFontObject(isSelected and "GameFontNormal" or "GameFontHighlight")
         button:Show()
     end
     for i = #families + 1, #familyButtons do
@@ -646,8 +632,38 @@ local function CreateResizeGrip()
     end)
 end
 
+-- Blizzard's standard window (portrait, title, close button) when this
+-- client has the template; otherwise a frame with the classic gold dialog
+-- border. Returns the frame and whether it's the native template.
+local function CreateWindowFrame()
+    local ok, native = pcall(CreateFrame, "Frame", "PetDexFrame", UIParent, "ButtonFrameTemplate")
+    if ok and native then
+        if native.Inset then native.Inset:Hide() end
+        local portrait = native.portrait or (native.PortraitContainer and native.PortraitContainer.portrait)
+        if native.SetPortraitToAsset then
+            pcall(native.SetPortraitToAsset, native, TAMED_ICON)
+        elseif portrait and SetPortraitToTexture then
+            pcall(SetPortraitToTexture, portrait, TAMED_ICON)
+        elseif portrait then
+            portrait:SetTexture(TAMED_ICON)
+        end
+        if native.SetTitle then
+            pcall(native.SetTitle, native, "PetDex")
+        else
+            local titleText = native.TitleText or (native.TitleContainer and native.TitleContainer.TitleText)
+            if titleText then titleText:SetText("PetDex") end
+        end
+        INSET.left, INSET.right, INSET.bottom = 4, 6, 4
+        return native, true
+    end
+    local plain = Skin.CreateFrame("Frame", UIParent, "dialog", "PetDexFrame")
+    INSET.left, INSET.right, INSET.bottom = 11, 11, 11
+    return plain, false
+end
+
 local function CreateWindow()
-    frame = CreateFrame("Frame", "PetDexFrame", UIParent)
+    local native
+    frame, native = CreateWindowFrame()
     frame:SetFrameStrata("DIALOG") -- above action bars and unit frames
     frame:SetToplevel(true)
     frame:SetMovable(true)
@@ -661,35 +677,29 @@ local function CreateWindow()
     end)
     table.insert(UISpecialFrames, "PetDexFrame") -- Escape closes it
     RestoreGeometry()
-    Fill(frame, 0.06, 0.065, 0.08, 1)
-    AddBorder(frame, GOLD)
     CreateResizeGrip()
 
-    -- Title bar
-    local titleBar = CreateFrame("Frame", nil, frame)
-    titleBar:SetPoint("TOPLEFT")
-    titleBar:SetPoint("TOPRIGHT")
-    titleBar:SetHeight(TITLE_HEIGHT)
-    Fill(titleBar, 0.1, 0.11, 0.14, 1)
-    local title = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("CENTER")
-    title:SetText("PetDex")
-    local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", 0, 0)
+    if not native then
+        -- Dialog fallback: the classic header plate and a close button.
+        local plate = frame:CreateTexture(nil, "ARTWORK")
+        plate:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Header")
+        plate:SetSize(256, 64)
+        plate:SetPoint("TOP", 0, 12)
+        local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        title:SetPoint("TOP", plate, "TOP", 0, -14)
+        title:SetText("PetDex")
+        local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+        close:SetPoint("TOPRIGHT", -4, -4)
+    end
 
-    -- Header
-    local header = CreateFrame("Frame", nil, frame)
-    header:SetPoint("TOPLEFT", 0, -TITLE_HEIGHT)
-    header:SetPoint("TOPRIGHT", 0, -TITLE_HEIGHT)
+    -- Header, starting right of the native window's round portrait (the
+    -- portrait is drawn on the window, so a panel over it would hide it).
+    local header = Skin.CreateFrame("Frame", frame, "panel")
+    header:SetPoint("TOPLEFT", INSET.left + (native and 56 or 0), -TITLE_HEIGHT)
+    header:SetPoint("TOPRIGHT", -INSET.right, -TITLE_HEIGHT)
     header:SetHeight(HEADER_HEIGHT)
-    Fill(header, 0.085, 0.09, 0.115, 1)
-    local headerLine = header:CreateTexture(nil, "BORDER")
-    headerLine:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.35)
-    headerLine:SetHeight(1)
-    headerLine:SetPoint("BOTTOMLEFT")
-    headerLine:SetPoint("BOTTOMRIGHT")
     frame.headerTotal = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    frame.headerTotal:SetPoint("LEFT", 20, 6)
+    frame.headerTotal:SetPoint("LEFT", 16, 6)
     frame.headerSeen = header:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     frame.headerSeen:SetPoint("TOPLEFT", frame.headerTotal, "BOTTOMLEFT", 0, -3)
     frame.rarityCounters = {}
@@ -707,25 +717,18 @@ local function CreateWindow()
     end
 
     -- Sidebar
-    frame.sidebar = CreateFrame("Frame", nil, frame)
-    frame.sidebar:SetPoint("TOPLEFT", 0, -BODY_TOP)
-    frame.sidebar:SetPoint("BOTTOMLEFT")
+    frame.sidebar = Skin.CreateFrame("Frame", frame, "panel")
+    frame.sidebar:SetPoint("TOPLEFT", INSET.left, -BODY_TOP)
+    frame.sidebar:SetPoint("BOTTOMLEFT", INSET.left, INSET.bottom)
     frame.sidebar:SetWidth(SIDEBAR_WIDTH)
-    Fill(frame.sidebar, 0.05, 0.055, 0.07, 1)
-    local sidebarLine = frame.sidebar:CreateTexture(nil, "BORDER")
-    sidebarLine:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.35)
-    sidebarLine:SetWidth(1)
-    sidebarLine:SetPoint("TOPRIGHT")
-    sidebarLine:SetPoint("BOTTOMRIGHT")
-    local familiesTitle = frame.sidebar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    local familiesTitle = frame.sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     familiesTitle:SetPoint("TOPLEFT", 18, -16)
     familiesTitle:SetText("FAMILIES")
 
     -- Content
-    local content = CreateFrame("Frame", nil, frame)
-    Fill(content, 0.06, 0.065, 0.08, 1)
-    content:SetPoint("TOPLEFT", SIDEBAR_WIDTH, -BODY_TOP)
-    content:SetPoint("BOTTOMRIGHT", -VIEWER_WIDTH, 0)
+    local content = Skin.CreateFrame("Frame", frame, "panel")
+    content:SetPoint("TOPLEFT", INSET.left + SIDEBAR_WIDTH, -BODY_TOP)
+    content:SetPoint("BOTTOMRIGHT", -(INSET.right + VIEWER_WIDTH), INSET.bottom)
     frame.familyTitle = content:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     frame.familyTitle:SetPoint("TOPLEFT", PAD, -PAD)
     frame.familyCount = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -735,24 +738,25 @@ local function CreateWindow()
     frame.content:SetPoint("TOPLEFT", 0, -CONTENT_TOP)
     frame.content:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, PAGER_HEIGHT)
 
-    frame.prevButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    frame.prevButton:SetSize(80, 22)
-    frame.prevButton:SetPoint("BOTTOMLEFT", PAD, 10)
-    frame.prevButton:SetText("Previous")
+    -- The spellbook's page buttons, with the page number between them.
+    frame.pageText = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    frame.pageText:SetPoint("BOTTOM", 0, 14)
+    frame.prevButton = Skin.CreatePageButton(content, "Prev")
+    frame.prevButton:SetPoint("RIGHT", frame.pageText, "LEFT", -10, 0)
     frame.prevButton:SetScript("OnClick", function() ChangePage(-1) end)
-    frame.nextButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    frame.nextButton:SetSize(80, 22)
-    frame.nextButton:SetPoint("BOTTOMRIGHT", -PAD, 10)
-    frame.nextButton:SetText("Next")
+    frame.nextButton = Skin.CreatePageButton(content, "Next")
+    frame.nextButton:SetPoint("LEFT", frame.pageText, "RIGHT", 10, 0)
     frame.nextButton:SetScript("OnClick", function() ChangePage(1) end)
-    frame.pageText = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    frame.pageText:SetPoint("BOTTOM", 0, 15)
     content:EnableMouseWheel(true)
     content:SetScript("OnMouseWheel", function(_, delta) ChangePage(-delta) end)
 
     CreateViewer()
 
-    frame:SetScript("OnShow", function() Refresh() end)
+    frame:SetScript("OnShow", function()
+        Skin.PlaySound("open")
+        Refresh()
+    end)
+    frame:SetScript("OnHide", function() Skin.PlaySound("close") end)
 end
 
 -- Called by Collection.lua when a look is newly seen or tamed.
@@ -779,9 +783,12 @@ function ns:OpenDexAt(lookID)
     if frame:IsShown() then
         Refresh(lookID)
     else
+        -- Show without the usual refresh, then refresh onto the look.
+        local onShow = frame:GetScript("OnShow")
         frame:SetScript("OnShow", nil)
         frame:Show()
-        frame:SetScript("OnShow", function() Refresh() end)
+        frame:SetScript("OnShow", onShow)
+        Skin.PlaySound("open")
         Refresh(lookID)
     end
 end
