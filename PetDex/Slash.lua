@@ -29,6 +29,7 @@ local function PrintHelp()
     print("  /petdex tooltip | announce | debug - toggle a setting")
     print("  /petdex probe [unit] - debug: test reading a unit's model (default target)")
     print("  /petdex lab [displayID | npc:<id>] - debug: model lab window (default target)")
+    print("  /petdex clearseen - forget all sightings (seen, not tamed); tames are kept")
     print("  /petdex reset - wipe all collection data")
 end
 
@@ -44,6 +45,23 @@ SlashCmdList.PETDEX = function(message)
         ns:ProbeModel(argument)
     elseif command == "lab" then
         ns:OpenModelLab(argument)
+    elseif command == "clearseen" then
+        -- Forget sightings (seen but never tamed) and unconfirmed discoveries;
+        -- tames are kept.
+        local cleared = 0
+        for npcID, record in pairs(ns.db.beasts) do
+            if not record.tamed then
+                ns.db.beasts[npcID] = nil
+                cleared = cleared + 1
+            end
+        end
+        for npcID, beast in pairs(ns.db.discovered) do
+            if not beast.verified then
+                ns.db.discovered[npcID] = nil
+            end
+        end
+        ns:Print(("Forgot %d sightings. Your tames are kept."):format(cleared))
+        ns:OnCollectionChanged()
     elseif TOGGLES[command] then
         local settings = ns.db.settings
         settings[command] = not settings[command]

@@ -21,9 +21,32 @@ local function IsTameSpell(spellID)
     return tameSpellName ~= nil and GetSpellName(spellID) == tameSpellName
 end
 
+-- Calls a unit API safely. Returns true/false, or nil when the answer is
+-- unknown (API missing, error, or a secret value).
+local function Ask(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, value = pcall(fn, ...)
+    if not ok or ns.IsSecret(value) then return nil end
+    return value and true or false
+end
+
+-- A wild beast: not a player, not anyone's pet, and something you could
+-- attack. On Forever other hunters' pets don't report as player controlled
+-- and carry Creature GUIDs, so one check isn't enough. An unknown answer
+-- counts against the unit: missing a sighting beats a false one.
+local function IsWild(unit)
+    if Ask(UnitIsPlayer, unit) ~= false then return false end
+    if Ask(UnitPlayerControlled, unit) == true then return false end
+    if Ask(UnitIsOtherPlayersPet, unit) == true then return false end
+    if Ask(UnitIsUnit, unit, "pet") == true then return false end
+    if Ask(UnitIsFriend, "player", unit) == true then return false end
+    if UnitCanAttack and Ask(UnitCanAttack, "player", unit) ~= true then return false end
+    return true
+end
+
 -- Returns the NPC ID if the unit is a wild beast worth tracking.
 local function GetBeastNPCID(unit)
-    if not UnitExists(unit) or UnitIsPlayer(unit) or UnitPlayerControlled(unit) then return end
+    if not UnitExists(unit) or not IsWild(unit) then return end
     local npcID = ns.NPCIDFromGUID(UnitGUID(unit))
     if not npcID then return end
     if ns.Beasts[npcID] or UnitCreatureFamily(unit) then
