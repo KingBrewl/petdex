@@ -27,6 +27,7 @@ New-Item -ItemType Junction `
 | `DexWindow.lua` | The PetDex window (`/petdex`): tabs, header, and the Dex tab (families, looks, viewer) |
 | `Views/Overview.lua` | Overview tab: totals, recent discoveries, progress per family |
 | `Views/Hunt.lua` | Hunt tab: checklist of the beasts in your current zone, with map pins |
+| `Views/Training.lua` | Training tab: pet abilities by rank and the beasts recorded teaching them |
 | `Views/Pets.lua` | My Pets tab: active pet and stable, with loyalty, happiness, training and abilities |
 | `Views/Profile.lua` | Profile tab: hunter rank, points, rank track and achievements |
 | `Points.lua` | Points (documenting and taming, by rarity), 40 hunter ranks, achievements |

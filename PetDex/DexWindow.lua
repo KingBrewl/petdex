@@ -66,6 +66,7 @@ local TABS = {
     { key = "overview", label = "Overview" },
     { key = "dex", label = "Dex" },
     { key = "hunt", label = "Hunt" },
+    { key = "training", label = "Training" },
     { key = "pets", label = "My Pets" },
     { key = "profile", label = "Profile" },
 }

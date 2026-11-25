@@ -173,6 +173,37 @@ function ns:GetPetAbilities()
     return abilities
 end
 
+-- The rank number in "Rank 4", or 1 for abilities without ranks.
+function ns.RankNumber(rank)
+    return tonumber(rank and tostring(rank):match("(%d+)")) or 1
+end
+
+-- The Beast Training window lists the pet abilities the hunter has learned.
+-- Remember the highest rank of each, per character: char.training[name].
+local function ScanBeastTraining()
+    if ns.playerClass ~= "HUNTER" then return end
+    local skillLine = SafeCall(GetCraftDisplaySkillLine)
+    if skillLine ~= "Beast Training" then return end
+    local count = SafeCall(GetNumCrafts) or 0
+    local known = {}
+    for i = 1, count do
+        local ok, name, rank, kind = pcall(GetCraftInfo, i)
+        if ok and name and kind ~= "header" and not ns.IsSecret(name) then
+            local number = ns.RankNumber(rank)
+            if not known[name] or number > known[name] then
+                known[name] = number
+            end
+        end
+    end
+    if next(known) then
+        ns.GetCharData().training = known
+        ns:Debug("beast training scanned:", count, "entries")
+        if ns.OnCollectionChanged then ns:OnCollectionChanged() end
+    end
+end
+ns:On("CRAFT_SHOW", ScanBeastTraining)
+ns:On("CRAFT_UPDATE", ScanBeastTraining)
+
 -- Learned from the pet trainer, not from the beast.
 local TRAINER_ABILITIES = { Growl = true }
 

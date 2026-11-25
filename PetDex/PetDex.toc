@@ -20,6 +20,7 @@ BeastStage.lua
 DexWindow.lua
 Views\Overview.lua
 Views\Hunt.lua
+Views\Training.lua
 Views\Pets.lua
 Views\Profile.lua
 Toast.lua
