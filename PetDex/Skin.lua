@@ -123,6 +123,7 @@ local SOUNDS = {
     page = { "IG_ABILITY_PAGE_TURN", "IG_SPELLBOOK_OPEN" },
     tab = { "IG_CHARACTER_INFO_TAB", "IG_MAINMENU_OPTION_CHECKBOX_ON" },
     select = { "IG_MAINMENU_OPTION_CHECKBOX_ON", "U_CHAT_SCROLL_BUTTON" },
+    pin = { "UI_MAP_WAYPOINT_SUPER_TRACK_ON", "MAP_PING" },
 }
 
 function Skin.PlaySound(purpose)

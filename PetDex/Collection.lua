@@ -86,34 +86,6 @@ end
 -- Zone name for a beast: given in data, learned in game (discovered beasts),
 -- or worked out from its spawn point (map, x, y in world coordinates).
 local zoneCache = {}
-local function ZoneFromSpawn(map, x, y)
-    local name
-    if C_Map and C_Map.GetMapPosFromWorldPos and CreateVector2D then
-        local ok, uiMapID, mapPos = pcall(C_Map.GetMapPosFromWorldPos, map, CreateVector2D(x, y))
-        if ok and uiMapID then
-            -- If that's a continent, look for the zone at the point.
-            if mapPos and C_Map.GetMapInfoAtPosition then
-                local okAt, child = pcall(C_Map.GetMapInfoAtPosition, uiMapID, mapPos.x, mapPos.y)
-                if okAt and child and child.name then
-                    name = child.name
-                end
-            end
-            if not name then
-                local info = C_Map.GetMapInfo(uiMapID)
-                name = info and info.name
-            end
-        end
-    end
-    -- Dungeons and raids: the instance's name.
-    if not name and map ~= 0 and map ~= 1 and GetRealZoneText then
-        local ok, text = pcall(GetRealZoneText, map)
-        if ok and text and text ~= "" then
-            name = text
-        end
-    end
-    return name
-end
-
 function ns:GetBeastZone(beast)
     if not beast then return end
     if beast.zone then return beast.zone end
@@ -123,7 +95,7 @@ function ns:GetBeastZone(beast)
     if not beast.map then return end
     local key = beast.map .. ":" .. beast.x .. ":" .. beast.y
     if zoneCache[key] == nil then
-        zoneCache[key] = ZoneFromSpawn(beast.map, beast.x, beast.y) or false
+        zoneCache[key] = ns:ZoneFromSpawn(beast) or false -- Map.lua
     end
     return zoneCache[key] or nil
 end
@@ -384,6 +356,9 @@ function ns:MarkSeen(npcID, info)
     end
     record.lastSeen = now
     record.lastZone = info.zone
+    if info.speed then
+        record.speed = info.speed -- measured in game (Tracking.lua)
+    end
     ConfirmLook(record, info.lookID, "seen")
     if firstSighting then
         Announce(npcID, before, LooksWith(npcID), "seen")

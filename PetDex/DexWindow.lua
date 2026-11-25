@@ -13,8 +13,8 @@ local BODY_TOP = TITLE_HEIGHT + HEADER_HEIGHT
 local PAD = 16
 local FAMILY_HEIGHT_MAX, FAMILY_HEIGHT_MIN = 30, 20
 local FAMILY_LIST_TOP = 40 -- below the "FAMILIES" label
-local VIEWER_STAGE_MAX, VIEWER_STAGE_MIN = 260, 140
-local VIEWER_BELOW_STAGE = 260 -- room for the text and record box under the stage
+local VIEWER_STAGE_MAX, VIEWER_STAGE_MIN = 260, 120
+local VIEWER_BELOW_STAGE = 330 -- room for the sections and record box under the stage
 
 local TILE_WIDTH, STAGE_HEIGHT = 124, 108
 local TILE_HEIGHT = STAGE_HEIGHT + 34
@@ -134,6 +134,98 @@ end
 ---------------------------------------------------------------------------
 -- Viewer
 ---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+-- Viewer sections: Combat, Taming, Where
+---------------------------------------------------------------------------
+local HEADING = "|cffffd100%s|r"
+local GREY = "|cff9d9d9d%s|r"
+local GOOD = "|cff40ff40%s|r"
+local WARN = "|cffff9933%s|r"
+
+local function SpeedLabel(speed)
+    if speed <= 1.2 then return "Fast" end
+    if speed < 1.8 then return "Quick" end
+    if speed <= 2.0 then return "Normal" end
+    return "Slow"
+end
+
+-- "8 h", "1-24 h", "45 min"
+local function DurationText(minSeconds, maxSeconds)
+    local function part(seconds)
+        if seconds >= 3600 then return math.floor(seconds / 3600 + 0.5), "h" end
+        return math.floor(seconds / 60 + 0.5), "min"
+    end
+    local low, lowUnit = part(minSeconds)
+    local high, highUnit = part(maxSeconds)
+    if low == high and lowUnit == highUnit then return low .. " " .. lowUnit end
+    if lowUnit == highUnit then return low .. "-" .. high .. " " .. highUnit end
+    return low .. " " .. lowUnit .. " - " .. high .. " " .. highUnit
+end
+
+local function MinLevel(beast)
+    local level = beast and beast.level
+    if type(level) == "table" then return level[1] end
+    return level or (beast and beast.minLevel)
+end
+
+local function CombatLines(info, lines)
+    local beast, record = info.beast, info.record
+    table.insert(lines, HEADING:format("Combat"))
+    local measured = record and record.speed
+    local speed = measured or (beast and beast.speed) or 2.0
+    table.insert(lines, ("Attack speed %.1fs  %s%s"):format(speed, SpeedLabel(speed),
+        measured and GREY:format("  (measured)") or ""))
+    if math.abs(speed - 2.0) > 0.05 then
+        table.insert(lines, GREY:format(speed < 2.0
+            and "Damage is normalized; faster swings keep Frenzy up and push back casts."
+            or "Damage is normalized; fewer, harder swings."))
+    end
+    local family = ns.Families[info.family]
+    if family then
+        table.insert(lines, ("%s: %s"):format(family.ability, family.effect))
+    end
+    if beast and beast.school then
+        table.insert(lines, ("Deals %s damage"):format(beast.school))
+    end
+end
+
+local function TamingLines(info, lines)
+    local beast = info.beast
+    table.insert(lines, HEADING:format("Taming"))
+    local minLevel = MinLevel(beast)
+    if minLevel then
+        local playerLevel = UnitLevel("player") or 0
+        if ns.playerClass ~= "HUNTER" then
+            table.insert(lines, ("Hunters can tame it from level %d"):format(minLevel))
+        elseif playerLevel >= minLevel then
+            table.insert(lines, GOOD:format("Tameable now") .. ("  (level %s, you're %d)"):format(LevelText(beast), playerLevel))
+        else
+            table.insert(lines, WARN:format(("Tameable at level %d"):format(minLevel)) .. ("  (you're %d)"):format(playerLevel))
+        end
+    end
+    if beast and beast.elite then
+        table.insert(lines, WARN:format("Elite") .. ": bring help")
+    end
+end
+
+local function WhereLines(info, lines, state)
+    local beast = info.beast
+    table.insert(lines, HEADING:format("Where"))
+    local zone = ZoneText(beast)
+    if zone then
+        table.insert(lines, state == "unknown" and ("Hint: " .. zone) or zone)
+    end
+    if beast and beast.spawns == 0 then
+        table.insert(lines, info.rarity == "unique" and "Summoned: no fixed spawn" or "No known spawn point")
+    elseif beast and beast.spawns then
+        local spawnText = beast.spawns == 1 and "1 spawn point" or (beast.spawns .. " spawn points")
+        if beast.respawn then
+            spawnText = spawnText .. ", respawns every " .. DurationText(beast.respawn[1], beast.respawn[2])
+        end
+        table.insert(lines, spawnText)
+    end
+end
+
 local function FindGroup(family, modelName)
     for _, group in ipairs(family and family.models or {}) do
         if group.name == modelName then return group end
@@ -145,17 +237,17 @@ local function UpdateViewer()
     if not info then
         viewer.stage:SetBeast(nil)
         viewer.name:SetText("")
-        viewer.details:SetText("")
+        viewer.info:SetText("")
         viewer.record:SetText("")
-        viewer.note:SetText("")
         viewer.group:SetText("")
+        viewer.pin:Hide()
         return
     end
     viewer.stage:SetBeast(StageBeast(info))
     local state = StageState(info)
     local beast, record = info.beast, info.record
     local rarityColor = ns.RARITY_COLORS[info.rarity] or ns.RARITY_COLORS.common
-    local level, zone = LevelText(beast), ZoneText(beast)
+    local level = LevelText(beast)
 
     if state == "unknown" then
         viewer.name:SetText("???")
@@ -165,21 +257,24 @@ local function UpdateViewer()
         ColorText(viewer.name, rarityColor)
     end
 
-    local lines = { info.model == info.family and info.family
-        or ("%s  ·  %s model"):format(info.family, info.model) }
-    local rarityLine = "|cff%02x%02x%02x%s|r"
-    rarityLine = rarityLine:format(math.floor(rarityColor[1] * 255), math.floor(rarityColor[2] * 255),
-        math.floor(rarityColor[3] * 255),
-        RARITY_LABELS[info.rarity] or info.rarity)
-    if level then rarityLine = rarityLine .. "  ·  Level " .. level end
-    table.insert(lines, rarityLine)
-    if zone then
-        table.insert(lines, state == "unknown" and ("Hint: " .. zone) or zone)
+    -- Summary line: family (and model group), rarity, level.
+    local rarityText = ("|cff%02x%02x%02x%s|r"):format(math.floor(rarityColor[1] * 255),
+        math.floor(rarityColor[2] * 255), math.floor(rarityColor[3] * 255), RARITY_LABELS[info.rarity] or info.rarity)
+    local summary = (info.model == info.family and info.family or (info.family .. "  ·  " .. info.model))
+        .. "  ·  " .. rarityText .. (level and ("  ·  Level " .. level) or "")
+    local lines = { summary, " " }
+    -- Combat stats are the reward for documenting a beast.
+    if state == "unknown" then
+        table.insert(lines, GREY:format("Target this beast in the wild to document it and reveal its combat stats."))
+    else
+        CombatLines(info, lines)
     end
-    viewer.details:SetText(table.concat(lines, "\n"))
-
-    local note = beast and beast.note
-    viewer.note:SetText(note and state ~= "unknown" and ("\"" .. note .. "\"") or "")
+    table.insert(lines, " ")
+    TamingLines(info, lines)
+    table.insert(lines, " ")
+    WhereLines(info, lines, state)
+    viewer.info:SetText(table.concat(lines, "\n"))
+    viewer.pin:SetShown(beast ~= nil and (beast.spawns or 0) > 0 and beast.map ~= nil)
 
     local recordText
     if state == "tamed" and record then
@@ -235,21 +330,28 @@ local function CreateViewer()
         viewer.stage:PlayAnimation(ANIMATIONS[animIndex])
     end)
 
-    viewer.name = viewer:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-    viewer.name:SetPoint("TOPLEFT", viewer.stage.frame, "BOTTOMLEFT", 0, -30)
+    viewer.name = viewer:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    viewer.name:SetPoint("TOPLEFT", viewer.stage.frame, "BOTTOMLEFT", 0, -28)
     viewer.name:SetPoint("RIGHT", -PAD, 0)
     viewer.name:SetJustifyH("LEFT")
+    viewer.name:SetWordWrap(false)
 
-    viewer.details = viewer:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    viewer.details:SetPoint("TOPLEFT", viewer.name, "BOTTOMLEFT", 0, -6)
-    viewer.details:SetPoint("RIGHT", -PAD, 0)
-    viewer.details:SetJustifyH("LEFT")
-    viewer.details:SetSpacing(3)
+    -- Summary, then the Combat, Taming and Where sections.
+    viewer.info = viewer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    viewer.info:SetPoint("TOPLEFT", viewer.name, "BOTTOMLEFT", 0, -5)
+    viewer.info:SetPoint("RIGHT", -PAD, 0)
+    viewer.info:SetJustifyH("LEFT")
+    viewer.info:SetJustifyV("TOP")
+    viewer.info:SetSpacing(2)
 
-    viewer.note = viewer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    viewer.note:SetPoint("TOPLEFT", viewer.details, "BOTTOMLEFT", 0, -6)
-    viewer.note:SetPoint("RIGHT", -PAD, 0)
-    viewer.note:SetJustifyH("LEFT")
+    -- Pin the spawn point on the world map to follow it.
+    viewer.pin = CreateFrame("Button", nil, viewer, "UIPanelButtonTemplate")
+    viewer.pin:SetSize(110, 22)
+    viewer.pin:SetPoint("BOTTOMRIGHT", -PAD, PAD)
+    viewer.pin:SetText("Show on map")
+    viewer.pin:SetScript("OnClick", function()
+        if selectedLook then ns:PinLook(selectedLook) end
+    end)
 
     local box = Skin.CreateInset(viewer)
     box:SetPoint("BOTTOMLEFT", PAD, PAD + 26)
@@ -264,7 +366,9 @@ local function CreateViewer()
     viewer.record:SetJustifyH("LEFT")
 
     viewer.group = viewer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    viewer.group:SetPoint("BOTTOMLEFT", PAD, PAD + 4)
+    viewer.group:SetPoint("BOTTOMLEFT", PAD, PAD + 6)
+    viewer.group:SetPoint("RIGHT", viewer.pin, "LEFT", -6, 0)
+    viewer.group:SetJustifyH("LEFT")
 end
 
 ---------------------------------------------------------------------------

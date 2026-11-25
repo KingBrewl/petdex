@@ -54,9 +54,21 @@ local function GetBeastNPCID(unit)
     end
 end
 
+-- The beast's attack speed as the game reports it, rounded to 0.01s. Only
+-- out of combat: slows and haste effects in combat would skew it.
+local function ObservedSpeed(unit)
+    if Ask(UnitAffectingCombat, unit) ~= false then return end
+    if type(UnitAttackSpeed) ~= "function" then return end
+    local ok, speed = pcall(UnitAttackSpeed, unit)
+    if ok and not ns.IsSecret(speed) and type(speed) == "number" and speed > 0 then
+        return math.floor(speed * 100 + 0.5) / 100
+    end
+end
+
 local function DescribeUnit(unit)
     local zone, mapID = ns.GetLocation()
     return {
+        speed = ObservedSpeed(unit),
         name = UnitName(unit),
         level = UnitLevel(unit),
         family = UnitCreatureFamily(unit),

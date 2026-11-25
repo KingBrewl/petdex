@@ -17,6 +17,8 @@ New-Item -ItemType Junction `
 | `Core.lua` | Namespace, event dispatch, saved variables, helpers |
 | `Data/Beasts.lua` | Tameable beasts by NPC ID, **generated** from classic-db (see Data) |
 | `Data/Overrides.lua` | Hand-made corrections on top of the generated data |
+| `Data/Families.lua` | Each family's unique ability and Dash/Dive (from community guides) |
+| `Map.lua` | Spawn point to zone map position; pins it with the game's map pin to follow |
 | `Collection.lua` | Seen/tamed records, beasts discovered in game, stats |
 | `Tracking.lua` | Sightings, tame detection, active pet and stable backfill |
 | `Skin.lua` | Native look and sound: game backdrops, bars, page buttons and UI sounds |
