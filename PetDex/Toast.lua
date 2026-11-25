@@ -1,0 +1,178 @@
+-- Toasts: a short popup when a beast joins the dex (first seen) or is tamed.
+-- Shows the beast's model, its name in rarity colour and the new progress.
+-- Several in a row queue up; hovering keeps one open; clicking opens the dex
+-- on that beast. Toggle with /petdex toasts.
+local _, ns = ...
+
+local WIDTH, HEIGHT = 340, 92
+local SHOW_TIME, FADE_TIME = 4, 0.6
+local GOLD = { 0.79, 0.64, 0.36 }
+
+local toast
+local queue = {}
+local current
+
+local function AddBorder(target, color)
+    local lines = {}
+    for _, side in ipairs({ "TOP", "BOTTOM", "LEFT", "RIGHT" }) do
+        local line = target:CreateTexture(nil, "BORDER")
+        if side == "TOP" or side == "BOTTOM" then
+            line:SetHeight(1)
+            line:SetPoint(side .. "LEFT")
+            line:SetPoint(side .. "RIGHT")
+        else
+            line:SetWidth(1)
+            line:SetPoint("TOP" .. side)
+            line:SetPoint("BOTTOM" .. side)
+        end
+        lines[#lines + 1] = line
+    end
+    for _, line in ipairs(lines) do
+        line:SetColorTexture(color[1], color[2], color[3], 1)
+    end
+    return lines
+end
+
+local function SetBorderColor(lines, color)
+    for _, line in ipairs(lines) do
+        line:SetColorTexture(color[1], color[2], color[3], 1)
+    end
+end
+
+local function PlayToastSound(kind, rarity)
+    if not PlaySound or not SOUNDKIT then return end
+    local sound
+    if kind == "tamed" or rarity ~= "common" then
+        sound = SOUNDKIT.IG_QUEST_LIST_COMPLETE
+    else
+        sound = SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
+    end
+    if sound then
+        pcall(PlaySound, sound)
+    end
+end
+
+-- "Cat 13/51  ·  PetDex 120/588" (documented counts).
+local function ProgressText(info)
+    local total, seen, familySeen, familyTotal = 0, 0, 0, 0
+    for _, family in ipairs(ns:GetDexFamilies()) do
+        total = total + family.total
+        seen = seen + family.seen
+        if family.name == info.family then
+            familySeen, familyTotal = family.seen, family.total
+        end
+    end
+    return ("%s %d/%d  ·  PetDex %d/%d"):format(info.family, familySeen, familyTotal, seen, total)
+end
+
+local ShowNext
+
+local function Finish()
+    toast:Hide()
+    current = nil
+    ShowNext()
+end
+
+local function CreateToast()
+    toast = CreateFrame("Button", "PetDexToast", UIParent)
+    toast:SetSize(WIDTH, HEIGHT)
+    toast:SetPoint("TOP", 0, -150)
+    toast:SetFrameStrata("HIGH")
+    toast:Hide()
+
+    local bg = toast:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.06, 0.065, 0.08, 0.96)
+    toast.border = AddBorder(toast, GOLD)
+
+    toast.stage = ns.CreateBeastStage(toast, 80, 80)
+    toast.stage.frame:SetPoint("LEFT", 6, 0)
+
+    toast.title = toast:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    toast.title:SetPoint("TOPLEFT", toast.stage.frame, "TOPRIGHT", 12, -4)
+    toast.name = toast:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    toast.name:SetPoint("TOPLEFT", toast.title, "BOTTOMLEFT", 0, -3)
+    toast.name:SetPoint("RIGHT", -10, 0)
+    toast.name:SetJustifyH("LEFT")
+    toast.name:SetWordWrap(false)
+    toast.sub = toast:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    toast.sub:SetPoint("TOPLEFT", toast.name, "BOTTOMLEFT", 0, -3)
+    toast.progress = toast:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    toast.progress:SetPoint("TOPLEFT", toast.sub, "BOTTOMLEFT", 0, -4)
+
+    toast:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    toast:SetScript("OnClick", function(_, button)
+        if button == "LeftButton" and current and ns.OpenDexAt then
+            ns:OpenDexAt(current.lookID)
+        end
+        Finish()
+    end)
+    toast:SetScript("OnUpdate", function(self, elapsed)
+        -- Hovering holds the toast fully visible.
+        if self:IsMouseOver() then
+            self.elapsed = math.min(self.elapsed, SHOW_TIME)
+            self:SetAlpha(1)
+            return
+        end
+        self.elapsed = self.elapsed + elapsed
+        if self.elapsed <= SHOW_TIME then return end
+        local alpha = 1 - (self.elapsed - SHOW_TIME) / FADE_TIME
+        if alpha <= 0 then
+            Finish()
+        else
+            self:SetAlpha(alpha)
+        end
+    end)
+end
+
+ShowNext = function()
+    local entry = table.remove(queue, 1)
+    if not entry then return end
+    local info = ns:GetLookInfo(entry.lookID)
+    if not info then
+        ShowNext()
+        return
+    end
+    if not toast then CreateToast() end
+    current = entry
+
+    local rarityColor = ns.RARITY_COLORS[info.rarity] or ns.RARITY_COLORS.common
+    local rare = info.rarity ~= "common"
+    local title
+    if entry.kind == "tamed" then
+        title = "Beast tamed!"
+    elseif rare then
+        title = (info.rarity == "unique" and "Unique" or "Rare") .. " beast documented!"
+    else
+        title = "New beast documented"
+    end
+    toast.title:SetText(title)
+    toast.name:SetText(info.label)
+    toast.name:SetTextColor(rarityColor[1], rarityColor[2], rarityColor[3])
+    local zone = ns:GetBeastZone(info.beast)
+    toast.sub:SetText(zone and (info.family .. "  ·  " .. zone) or info.family)
+    toast.progress:SetText(ProgressText(info))
+    SetBorderColor(toast.border, (entry.kind == "tamed" or rare) and rarityColor or GOLD)
+
+    toast.stage:SetBeast({ npcID = info.npcID, displayID = info.displayID,
+        state = entry.kind == "tamed" and "tamed" or "seen", rarity = info.rarity, spirit = info.spirit })
+    toast.elapsed = 0
+    toast:SetAlpha(1)
+    toast:Show()
+    PlayToastSound(entry.kind, info.rarity)
+end
+
+-- Called by Collection.lua. kind: "seen" (newly documented) or "tamed".
+function ns:ShowDiscovery(lookID, kind)
+    if not self.db.settings.toasts then return end
+    -- A tame replaces a queued "documented" toast for the same look.
+    for i = #queue, 1, -1 do
+        if queue[i].lookID == lookID then
+            table.remove(queue, i)
+        end
+    end
+    table.insert(queue, { lookID = lookID, kind = kind })
+    if not current then
+        ShowNext()
+    end
+end

@@ -28,6 +28,7 @@ local GOLD = { 0.79, 0.64, 0.36 }
 local DIM = { 0.23, 0.24, 0.27 }
 local RARITY_LABELS = { common = "Common", rare = "Rare", unique = "Unique" }
 local ANIMATIONS = { 0, 4, 5, 16 } -- stand, walk, run, attack
+local TAMED_ICON = "Interface\\Icons\\Ability_Hunter_BeastTaming"
 
 local frame
 local families = {}
@@ -106,28 +107,30 @@ end
 -- Header
 ---------------------------------------------------------------------------
 local function UpdateHeader()
+    -- Completion counts documented (seen) looks, like a Pokedex; tames are
+    -- the second, harder number.
     local total, tamed, seen = 0, 0, 0
     local byRarity = {}
     for _, family in ipairs(families) do
         for _, group in ipairs(family.models) do
             for _, info in ipairs(group.looks) do
                 total = total + 1
-                local counts = byRarity[info.rarity] or { total = 0, tamed = 0 }
+                local counts = byRarity[info.rarity] or { total = 0, seen = 0 }
                 byRarity[info.rarity] = counts
                 counts.total = counts.total + 1
-                if info.status == "tamed" then
-                    tamed = tamed + 1
-                    counts.tamed = counts.tamed + 1
+                if info.status then
+                    seen = seen + 1
+                    counts.seen = counts.seen + 1
                 end
-                if info.status then seen = seen + 1 end
+                if info.status == "tamed" then tamed = tamed + 1 end
             end
         end
     end
-    frame.headerTotal:SetText(("Tamed %d / %d looks"):format(tamed, total))
-    frame.headerSeen:SetText(("%d seen in the wild"):format(seen))
+    frame.headerTotal:SetText(("Documented %d / %d beasts"):format(seen, total))
+    frame.headerSeen:SetText(("%d tamed"):format(tamed))
     for rarity, label in pairs(frame.rarityCounters) do
-        local counts = byRarity[rarity] or { total = 0, tamed = 0 }
-        label:SetText(("%s  %d/%d"):format(RARITY_LABELS[rarity], counts.tamed, counts.total))
+        local counts = byRarity[rarity] or { total = 0, seen = 0 }
+        label:SetText(("%s  %d/%d"):format(RARITY_LABELS[rarity], counts.seen, counts.total))
     end
 end
 
@@ -162,7 +165,7 @@ local function UpdateViewer()
         ColorText(viewer.name, { 0.62, 0.6, 0.55 })
     else
         viewer.name:SetText(info.label)
-        ColorText(viewer.name, state == "tamed" and rarityColor or { 0.75, 0.72, 0.66 })
+        ColorText(viewer.name, rarityColor)
     end
 
     local lines = { info.model == info.family and info.family
@@ -206,7 +209,8 @@ local function UpdateViewer()
     viewer.record:SetText(recordText)
 
     local group = FindGroup(selectedFamily, info.model)
-    viewer.group:SetText(group and ("%s looks tamed: %d / %d"):format(group.name, group.tamed, group.total) or "")
+    viewer.group:SetText(group and ("%s: %d / %d documented, %d tamed"):format(
+        group.name, group.seen, group.total, group.tamed) or "")
 end
 
 local function CreateViewer()
@@ -306,6 +310,16 @@ local function GetTile(index)
     tile.sub:SetWidth(TILE_WIDTH - 8)
     tile.sub:SetWordWrap(false)
 
+    -- Tamed badge, on a frame above the model so it draws on top of it.
+    local overlay = CreateFrame("Frame", nil, tile)
+    overlay:SetAllPoints(tile.stage.frame)
+    overlay:SetFrameLevel(tile.stage.frame:GetFrameLevel() + 10)
+    tile.badge = overlay:CreateTexture(nil, "OVERLAY")
+    tile.badge:SetSize(18, 18)
+    tile.badge:SetPoint("TOPRIGHT", -4, -4)
+    tile.badge:SetTexture(TAMED_ICON)
+    tile.badge:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
     tile:SetScript("OnClick", function(self) SelectLook(self.info) end)
     tile:SetScript("OnEnter", function(self)
         if self.info ~= selectedLook then SetBorderColor(self.border, { 0.5, 0.42, 0.25 }) end
@@ -339,19 +353,20 @@ local function FillTile(tile, info)
     tile.info = info
     tile.stage:SetBeast(StageBeast(info))
     local state = StageState(info)
+    tile.badge:SetShown(state == "tamed")
     if state == "unknown" then
         tile.name:SetText("???")
         ColorText(tile.name, { 0.62, 0.6, 0.55 })
         tile.sub:SetText(ZoneText(info.beast) or "")
-    elseif state == "seen" then
-        tile.name:SetText(info.label)
-        ColorText(tile.name, { 0.75, 0.72, 0.66 })
-        tile.sub:SetText("Seen")
     else
         tile.name:SetText(info.label)
         ColorText(tile.name, ns.RARITY_COLORS[info.rarity] or ns.RARITY_COLORS.common)
         local level = LevelText(info.beast)
-        tile.sub:SetText(level and ("Level " .. level) or "Tamed")
+        local sub = level and ("Level " .. level) or ""
+        if state == "tamed" then
+            sub = sub ~= "" and (sub .. "  ·  Tamed") or "Tamed"
+        end
+        tile.sub:SetText(sub)
     end
     SetBorderColor(tile.border, info == selectedLook and GOLD or DIM)
 end
@@ -400,7 +415,8 @@ local function ShowPage()
             header:ClearAllPoints()
             header:SetPoint("TOPLEFT", PAD, -y)
             header.title:SetText(row.group.name)
-            header.count:SetText(("%d/%d"):format(row.group.tamed, row.group.total))
+            header.count:SetText(("%d/%d documented  ·  %d tamed"):format(
+                row.group.seen, row.group.total, row.group.tamed))
             header:Show()
         else
             for column, info in ipairs(row.looks) do
@@ -473,8 +489,8 @@ local function UpdateFamilyButtons()
         local button = GetFamilyButton(index)
         button.family = family
         button.label:SetText(family.name)
-        button.count:SetText(("%d/%d"):format(family.tamed, family.total))
-        local share = family.total > 0 and family.tamed / family.total or 0
+        button.count:SetText(("%d/%d"):format(family.seen, family.total))
+        local share = family.total > 0 and family.seen / family.total or 0
         button.bar:SetWidth(math.max(1, button.barWidth * share))
         button.bar:SetShown(share > 0)
         local isSelected = selectedFamily and selectedFamily.name == family.name
@@ -487,21 +503,35 @@ local function UpdateFamilyButtons()
     end
 end
 
-SelectFamily = function(family, keepPage)
+local function PageOf(lookID)
+    for index, rows in ipairs(pages) do
+        for _, row in ipairs(rows) do
+            for _, info in ipairs(row.looks or {}) do
+                if info.lookID == lookID then return index end
+            end
+        end
+    end
+end
+
+-- focusLookID: select that look and turn to its page.
+SelectFamily = function(family, keepPage, focusLookID)
     selectedFamily = family
     frame.familyTitle:SetText(family and family.name or "")
-    frame.familyCount:SetText(family and ("%d of %d looks tamed"):format(family.tamed, family.total) or "")
+    frame.familyCount:SetText(family and ("%d of %d documented  ·  %d tamed"):format(
+        family.seen, family.total, family.tamed) or "")
     pages = BuildPages(family)
     if not keepPage then page = 1 end
+    if focusLookID then page = PageOf(focusLookID) or page end
     page = math.max(1, math.min(page, #pages))
     UpdateFamilyButtons()
     ShowPage()
     -- Keep the selected look if it's in this family, else pick the first.
+    local wanted = focusLookID or (selectedLook and selectedLook.lookID)
     local keep
-    if selectedLook and family then
+    if wanted and family then
         for _, group in ipairs(family.models) do
             for _, info in ipairs(group.looks) do
-                if info.lookID == selectedLook.lookID then keep = info end
+                if info.lookID == wanted then keep = info end
             end
         end
     end
@@ -509,17 +539,23 @@ SelectFamily = function(family, keepPage)
     SelectLook(keep or first)
 end
 
--- Rebuild from the collection, keeping the current family, page and look.
-local function Refresh()
+-- Rebuild from the collection, keeping the current family, page and look,
+-- or jumping to focusLookID.
+local function Refresh(focusLookID)
     families = ns:GetDexFamilies()
     local family = families[1]
-    if selectedFamily then
+    local wantedFamily = selectedFamily and selectedFamily.name
+    if focusLookID then
+        local look = ns:GetLookInfo(focusLookID)
+        wantedFamily = look and look.family or wantedFamily
+    end
+    if wantedFamily then
         for _, candidate in ipairs(families) do
-            if candidate.name == selectedFamily.name then family = candidate end
+            if candidate.name == wantedFamily then family = candidate end
         end
     end
     UpdateHeader()
-    SelectFamily(family, true)
+    SelectFamily(family, true, focusLookID)
 end
 
 ---------------------------------------------------------------------------
@@ -628,7 +664,7 @@ local function CreateWindow()
 
     CreateViewer()
 
-    frame:SetScript("OnShow", Refresh)
+    frame:SetScript("OnShow", function() Refresh() end)
 end
 
 -- Called by Collection.lua when a look is newly seen or tamed.
@@ -644,4 +680,20 @@ function ns:ToggleDex()
         frame:Hide()
     end
     frame:SetShown(not frame:IsShown())
+end
+
+-- Open the dex on one look (from a toast).
+function ns:OpenDexAt(lookID)
+    if not frame then
+        CreateWindow()
+        frame:Hide()
+    end
+    if frame:IsShown() then
+        Refresh(lookID)
+    else
+        frame:SetScript("OnShow", nil)
+        frame:Show()
+        frame:SetScript("OnShow", function() Refresh() end)
+        Refresh(lookID)
+    end
 end

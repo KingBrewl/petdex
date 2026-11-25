@@ -21,6 +21,7 @@ New-Item -ItemType Junction `
 | `Tracking.lua` | Sightings, tame detection, active pet and stable backfill |
 | `BeastStage.lua` | A beast's 3D model on a lit stage in its dex state (tamed, seen, silhouette), auto-framed |
 | `DexWindow.lua` | The dex window (`/petdex`): families, looks grouped by model, and a viewer |
+| `Toast.lua` | Popup when a beast is documented (first seen) or tamed |
 | `Tooltip.lua` | Collection status on beast tooltips |
 | `Probe.lua` | Debug probe: can the client read a unit's model (`/petdex probe`) |
 | `ModelLab.lua` | Debug window: a beast in each dex state, plus turning, zoom, animations and a frame-rate test (`/petdex lab`) |

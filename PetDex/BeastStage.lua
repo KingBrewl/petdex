@@ -9,8 +9,8 @@
 --   camera on +X, at a distance proportional to the model's size.
 -- - PlayerModel can't report a size, so a hidden ModelScene actor measures
 --   the bounding box, once per display ID; sizes are cached in saved vars.
--- - States: tamed (soft light), seen (SetDesaturation), unknown (all light at
---   zero: a black silhouette). Glowing spirit models ignore light, so an
+-- - States: tamed (spotlight, rarity glow), seen (full colour on a dimmer
+--   stage), unknown (all light at zero: a black silhouette). Glowing spirit models ignore light, so an
 --   unknown spirit beast is drawn as a faint grey ghost instead.
 local _, ns = ...
 
@@ -353,7 +353,9 @@ function Stage:Fit()
         model:SetAlpha(beast.spirit and GHOST_ALPHA or 1)
     else
         SetModelLight(model, LIGHT.ambient, LIGHT.diffuse)
-        pcall(model.SetDesaturation, model, beast.state == "seen" and 1 or 0)
+        -- Seen beasts are documented, so they show in full colour; taming adds
+        -- the spotlight and rarity glow (see Decorate).
+        pcall(model.SetDesaturation, model, 0)
         model:SetAlpha(1)
     end
 end

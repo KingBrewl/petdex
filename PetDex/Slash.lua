@@ -4,13 +4,14 @@ local _, ns = ...
 local TOGGLES = {
     tooltip = "Tooltip status",
     announce = "Chat announcements",
+    toasts = "Discovery popups",
     debug = "Debug output",
 }
 
 local function PrintStatus()
     local stats = ns:GetStats()
-    ns:Print(("Tamed %d/%d looks (%d seen). Rare and unique looks: %d/%d.")
-        :format(stats.tamed, stats.total, stats.seen, stats.raresTamed, stats.rares))
+    ns:Print(("Documented %d/%d beasts, %d tamed. Rare and unique tamed: %d/%d.")
+        :format(stats.seen, stats.total, stats.tamed, stats.raresTamed, stats.rares))
     if stats.unverified > 0 then
         ns:Print(("%d beasts found in the wild are waiting to be confirmed tameable."):format(stats.unverified))
     end
@@ -26,7 +27,7 @@ local function PrintHelp()
     ns:Print("v" .. ns.version .. " commands:")
     print("  /petdex - open or close the dex")
     print("  /petdex status - collection summary in chat")
-    print("  /petdex tooltip | announce | debug - toggle a setting")
+    print("  /petdex tooltip | announce | toasts | debug - toggle a setting")
     print("  /petdex probe [unit] - debug: test reading a unit's model (default target)")
     print("  /petdex lab [displayID | npc:<id>] - debug: model lab window (default target)")
     print("  /petdex clearseen - forget all sightings (seen, not tamed); tames are kept")

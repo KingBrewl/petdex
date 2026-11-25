@@ -248,11 +248,13 @@ end
 
 local function CountInto(group, info)
     group.total = group.total + 1
+    if info.status then group.seen = group.seen + 1 end
     if info.status == "tamed" then group.tamed = group.tamed + 1 end
 end
 
--- Sorted list of families: { name, total, tamed, models = { { name, total,
--- tamed, looks = { lookInfo, ... } }, ... } }. Looks sort rarest first.
+-- Sorted list of families: { name, total, seen, tamed, models = { { name,
+-- total, seen, tamed, looks = { lookInfo, ... } }, ... } }. Looks sort
+-- rarest first. "seen" counts every documented look, tamed ones included.
 function ns:GetDexFamilies()
     local byName = {}
     self:ForEachLook(function(lookID)
@@ -260,12 +262,12 @@ function ns:GetDexFamilies()
         if not info then return end
         local family = byName[info.family]
         if not family then
-            family = { name = info.family, total = 0, tamed = 0, models = {}, byModel = {} }
+            family = { name = info.family, total = 0, seen = 0, tamed = 0, models = {}, byModel = {} }
             byName[info.family] = family
         end
         local group = family.byModel[info.model]
         if not group then
-            group = { name = info.model, total = 0, tamed = 0, looks = {} }
+            group = { name = info.model, total = 0, seen = 0, tamed = 0, looks = {} }
             family.byModel[info.model] = group
             table.insert(family.models, group)
         end
@@ -295,6 +297,35 @@ end
 local function NotifyChanged()
     if ns.OnCollectionChanged then
         ns:OnCollectionChanged()
+    end
+end
+
+-- Looks of this NPC that are documented ("seen" or "tamed"), or tamed only.
+local function LooksWith(npcID, tamedOnly)
+    local found = {}
+    for _, lookID in ipairs(ns:GetLooks(npcID)) do
+        local status = ns:GetLookStatus(lookID)
+        if status == "tamed" or (status and not tamedOnly) then
+            found[lookID] = true
+        end
+    end
+    return found
+end
+
+-- Only looks that are in the dex get a toast (not unconfirmed discoveries).
+local function InDex(npcID)
+    local discovered = ns.db.discovered[npcID]
+    return ns.Beasts[npcID] ~= nil or (discovered ~= nil and discovered.verified)
+end
+
+-- Tell the toast about each look that just joined the dex (kind "seen") or
+-- was just tamed (kind "tamed").
+local function Announce(npcID, before, after, kind)
+    if not ns.ShowDiscovery or not InDex(npcID) then return end
+    for lookID in pairs(after) do
+        if not before[lookID] then
+            ns:ShowDiscovery(lookID, kind)
+        end
     end
 end
 
@@ -341,6 +372,7 @@ end
 
 function ns:MarkSeen(npcID, info)
     self:Discover(npcID, info)
+    local before = LooksWith(npcID)
     local record = self:GetRecord(npcID, true)
     local now = time()
     local firstSighting = not record.seen
@@ -354,18 +386,9 @@ function ns:MarkSeen(npcID, info)
     record.lastZone = info.zone
     ConfirmLook(record, info.lookID, "seen")
     if firstSighting then
+        Announce(npcID, before, LooksWith(npcID), "seen")
         NotifyChanged()
     end
-end
-
-local function TamedLooks(npcID)
-    local tamed = {}
-    for _, lookID in ipairs(ns:GetLooks(npcID)) do
-        if ns:GetLookStatus(lookID) == "tamed" then
-            tamed[lookID] = true
-        end
-    end
-    return tamed
 end
 
 -- source: "tame" (watched it happen), "pet" or "stable" (matched an existing pet)
@@ -374,7 +397,7 @@ end
 function ns:MarkTamed(npcID, info, source)
     info.tamed = true
     self:Discover(npcID, info)
-    local before = TamedLooks(npcID)
+    local before = LooksWith(npcID, true)
     local record = self:GetRecord(npcID, true)
     local now = time()
     record.seen = record.seen or now
@@ -386,11 +409,16 @@ function ns:MarkTamed(npcID, info, source)
     end
     ConfirmLook(record, info.lookID, "tamed")
 
+    local after = LooksWith(npcID, true)
     local isNew = false
-    for lookID in pairs(TamedLooks(npcID)) do
+    for lookID in pairs(after) do
         if not before[lookID] then
             isNew = true
         end
+    end
+    -- Toast only tames watched as they happen, not pets found at login.
+    if source == "tame" then
+        Announce(npcID, before, after, "tamed")
     end
     if isNew and self.db.settings.announce then
         local stats = self:GetStats()

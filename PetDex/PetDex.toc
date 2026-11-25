@@ -13,6 +13,7 @@ Tracking.lua
 Tooltip.lua
 BeastStage.lua
 DexWindow.lua
+Toast.lua
 Probe.lua
 ModelLab.lua
 Slash.lua

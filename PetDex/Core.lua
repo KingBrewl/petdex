@@ -88,6 +88,7 @@ local DB_VERSION = 1
 local DEFAULT_SETTINGS = {
     tooltip = true,  -- add PetDex status to beast tooltips
     announce = true, -- chat message for new tames and first rare sightings
+    toasts = true,   -- popup when a beast is documented or tamed
     debug = false,
 }
 
