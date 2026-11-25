@@ -26,6 +26,7 @@ New-Item -ItemType Junction `
 | `DexWindow.lua` | The PetDex window (`/petdex`): tabs, header, and the Dex tab (families, looks, viewer) |
 | `Views/Overview.lua` | Overview tab: totals, recent discoveries, progress per family |
 | `Views/Hunt.lua` | Hunt tab: checklist of the beasts in your current zone, with map pins |
+| `Views/Pets.lua` | My Pets tab: active pet and stable, with loyalty, happiness, training and abilities |
 | `Toast.lua` | Popup (with sound) when a beast is documented (first seen) or tamed |
 | `MinimapButton.lua` | Minimap button that opens the dex |
 | `Tooltip.lua` | Collection status on beast tooltips |

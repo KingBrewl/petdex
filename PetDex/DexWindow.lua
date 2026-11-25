@@ -66,6 +66,7 @@ local TABS = {
     { key = "overview", label = "Overview" },
     { key = "dex", label = "Dex" },
     { key = "hunt", label = "Hunt" },
+    { key = "pets", label = "My Pets" },
 }
 ns.DexViews = ns.DexViews or {}
 local views = {}

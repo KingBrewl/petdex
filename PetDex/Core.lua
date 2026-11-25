@@ -159,12 +159,19 @@ function ns.GetLocation()
     return GetZoneText(), mapID
 end
 
+-- Per character: pets = { [petGUID] = npcID }, petNames = { [name] =
+-- npcID } (names change, so kept current), stable = { last stable scan },
+-- unidentified = { stable pets we couldn't match }.
 function ns.GetCharData()
     local chars = ns.db.chars
     local data = chars[ns.charKey]
     if not data then
-        data = { pets = {}, unidentified = {} }
+        data = {}
         chars[ns.charKey] = data
     end
+    data.pets = data.pets or {}
+    data.petNames = data.petNames or {}
+    data.stable = data.stable or {}
+    data.unidentified = data.unidentified or {}
     return data
 end

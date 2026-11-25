@@ -100,10 +100,17 @@ end)
 ---------------------------------------------------------------------------
 -- Owned pets
 ---------------------------------------------------------------------------
+-- Remember which beast the active pet came from, by GUID and by its
+-- current name (stabled pets are only known by name).
 local function LinkCurrentPet(npcID)
+    local char = ns.GetCharData()
     local guid = UnitGUID("pet")
-    if guid then
-        ns.GetCharData().pets[guid] = npcID
+    if guid and not ns.IsSecret(guid) then
+        char.pets[guid] = npcID
+    end
+    local name = UnitName("pet")
+    if name and not ns.IsSecret(name) then
+        char.petNames[name] = npcID
     end
 end
 
@@ -129,7 +136,7 @@ local function IdentifyCurrentPet()
         return
     end
 
-    pets[guid] = npcID
+    LinkCurrentPet(npcID)
     if ns:GetStatus(npcID) ~= "tamed" then
         local beast = ns:GetBeast(npcID)
         ns:MarkTamed(npcID, { name = beast.name, family = beast.family }, "pet")
@@ -189,11 +196,14 @@ local function ScanStable()
     if ns.playerClass ~= "HUNTER" or not GetStablePetInfo then return end
     local char = ns.GetCharData()
     wipe(char.unidentified)
+    wipe(char.stable)
     local slots = GetNumStableSlots and GetNumStableSlots() or 0
     for slot = 0, slots do -- slot 0 is the active pet
         local icon, name, level, family = GetStablePetInfo(slot)
         if name then
-            local npcID = ns:MatchByName(name, family)
+            local npcID = char.petNames[name] or ns:MatchByName(name, family)
+            table.insert(char.stable, { slot = slot, name = name, level = level, family = family,
+                icon = icon, npcID = npcID })
             if npcID then
                 if ns:GetStatus(npcID) ~= "tamed" then
                     local beast = ns:GetBeast(npcID)
@@ -208,6 +218,15 @@ local function ScanStable()
 end
 
 ns:On("PET_STABLE_SHOW", ScanStable)
+-- Renaming a known pet: keep its name -> beast link current.
+ns:On("UNIT_NAME_UPDATE", function(_, unit)
+    if unit ~= "pet" then return end
+    local guid = UnitGUID("pet")
+    local npcID = guid and not ns.IsSecret(guid) and ns.GetCharData().pets[guid]
+    if npcID then
+        LinkCurrentPet(npcID)
+    end
+end)
 ns:On("PET_STABLE_UPDATE", ScanStable)
 
 ---------------------------------------------------------------------------
