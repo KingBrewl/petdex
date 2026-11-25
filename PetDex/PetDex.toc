@@ -18,6 +18,7 @@ BeastStage.lua
 DexWindow.lua
 Views\Overview.lua
 Views\Hunt.lua
+Views\Pets.lua
 Toast.lua
 MinimapButton.lua
 Probe.lua
