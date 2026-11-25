@@ -857,6 +857,18 @@ local function CreateWindow()
 
     CreateViewer()
 
+    -- Lay out again while the window is being resized (a few times a
+    -- second), not only when the grip is let go.
+    local relayoutQueued = false
+    frame:SetScript("OnSizeChanged", function()
+        if relayoutQueued or not viewer then return end
+        relayoutQueued = true
+        C_Timer.After(0.05, function()
+            relayoutQueued = false
+            Relayout()
+        end)
+    end)
+
     frame:SetScript("OnShow", function()
         Skin.PlaySound("open")
         Refresh()
@@ -869,6 +881,10 @@ function ns:OnCollectionChanged()
     if frame and frame:IsShown() then
         Refresh()
     end
+end
+
+function ns:HideDex()
+    if frame then frame:Hide() end
 end
 
 function ns:ToggleDex()

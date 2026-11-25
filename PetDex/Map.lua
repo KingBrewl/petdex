@@ -58,7 +58,30 @@ local function SetGamePin(uiMapID, pos)
     return true
 end
 
--- Pin a look's spawn point on the map. Returns true when a pin was placed.
+-- Open the world map on uiMapID, in front. The dex window sits above most
+-- of the UI, so it steps aside (the minimap button brings it back).
+local function OpenMapAt(uiMapID)
+    if ns.HideDex then ns:HideDex() end
+    if OpenWorldMap and pcall(OpenWorldMap, uiMapID) then
+        if WorldMapFrame and WorldMapFrame.Raise then WorldMapFrame:Raise() end
+        return
+    end
+    if not WorldMapFrame then return end
+    if not WorldMapFrame:IsShown() then
+        if ToggleWorldMap then
+            pcall(ToggleWorldMap)
+        elseif ShowUIPanel then
+            pcall(ShowUIPanel, WorldMapFrame)
+        end
+    end
+    if WorldMapFrame.SetMapID then
+        pcall(WorldMapFrame.SetMapID, WorldMapFrame, uiMapID)
+    end
+    if WorldMapFrame.Raise then WorldMapFrame:Raise() end
+end
+
+-- Pin a look's spawn point on the map and open the map there. Returns true
+-- when a pin was placed.
 function ns:PinLook(info)
     local beast = info and info.beast
     local name = info and info.status and info.label or "the undocumented beast"
@@ -79,15 +102,18 @@ function ns:PinLook(info)
     if SetGamePin(uiMapID, pos) then
         ns.Skin.PlaySound("pin")
         self:Print(("Pinned %s on your map: %s %s%s."):format(name, zone, coords, more))
+        OpenMapAt(uiMapID)
         return true
     end
     if TomTom and TomTom.AddWaypoint then
         local ok = pcall(TomTom.AddWaypoint, TomTom, uiMapID, pos.x, pos.y, { title = "PetDex: " .. name })
         if ok then
             self:Print(("Added a TomTom waypoint for %s: %s %s%s."):format(name, zone, coords, more))
+            OpenMapAt(uiMapID)
             return true
         end
     end
     self:Print(("%s: %s %s%s. (Map pins aren't available here.)"):format(name, zone, coords, more))
+    OpenMapAt(uiMapID)
     return false
 end
