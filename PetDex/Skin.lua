@@ -52,7 +52,12 @@ end
 function Skin.SetBackdrop(frame, style)
     if not frame.SetBackdrop then return end
     frame:SetBackdrop(BACKDROPS[style])
-    frame:SetBackdropColor(1, 1, 1, 1)
+    if style == "slot" then
+        -- The tooltip background is white art that the game tints dark.
+        frame:SetBackdropColor(0.04, 0.04, 0.05, 0.92)
+    else
+        frame:SetBackdropColor(1, 1, 1, 1)
+    end
     local grey = Skin.BORDER_GREY
     frame:SetBackdropBorderColor(grey[1], grey[2], grey[3], 1)
 end
@@ -61,6 +66,29 @@ function Skin.SetBorderColor(frame, color)
     if frame.SetBackdropBorderColor then
         frame:SetBackdropBorderColor(color[1], color[2], color[3], 1)
     end
+end
+
+-- A recessed panel like the ones inside Blizzard's own windows
+-- (InsetFrameTemplate), or a dark panel where the client lacks it.
+function Skin.CreateInset(parent)
+    local ok, inset = pcall(CreateFrame, "Frame", nil, parent, "InsetFrameTemplate")
+    if ok and inset then
+        return inset
+    end
+    return Skin.CreateFrame("Frame", parent, "panel")
+end
+
+-- Put a slot-style border behind a beast stage. The stage is raised above
+-- the border so the border's background can't cover it.
+function Skin.FrameStage(parent, stage)
+    local border = Skin.CreateFrame("Frame", parent, "slot")
+    border:SetPoint("TOPLEFT", stage.frame, "TOPLEFT", -4, 4)
+    border:SetPoint("BOTTOMRIGHT", stage.frame, "BOTTOMRIGHT", 4, -4)
+    local level = parent:GetFrameLevel()
+    border:SetFrameLevel(level + 1)
+    stage.frame:SetFrameLevel(level + 3)
+    stage.model:SetFrameLevel(level + 4)
+    return border
 end
 
 -- A status bar in the game's own bar texture, on a dark track.

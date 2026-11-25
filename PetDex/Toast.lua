@@ -61,12 +61,9 @@ local function CreateToast()
     toast:SetFrameStrata("HIGH")
     toast:Hide()
 
-    local slot = ns.Skin.CreateFrame("Frame", toast, "slot")
     toast.stage = ns.CreateBeastStage(toast, 76, 76)
     toast.stage.frame:SetPoint("LEFT", 12, 0)
-    slot:SetPoint("TOPLEFT", toast.stage.frame, "TOPLEFT", -4, 4)
-    slot:SetPoint("BOTTOMRIGHT", toast.stage.frame, "BOTTOMRIGHT", 4, -4)
-    toast.slot = slot
+    toast.slot = ns.Skin.FrameStage(toast, toast.stage)
 
     toast.title = toast:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     toast.title:SetPoint("TOPLEFT", toast.stage.frame, "TOPRIGHT", 12, -4)

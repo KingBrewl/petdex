@@ -211,20 +211,16 @@ local function UpdateViewer()
 end
 
 local function CreateViewer()
-    viewer = Skin.CreateFrame("Frame", frame, "panel")
+    viewer = Skin.CreateInset(frame)
     viewer:SetPoint("TOPRIGHT", -INSET.right, -BODY_TOP)
     viewer:SetPoint("BOTTOMRIGHT", -INSET.right, INSET.bottom)
     viewer:SetWidth(VIEWER_WIDTH)
 
-    -- A slot-style frame around the big stage (created first so it sits
-    -- under the model).
-    local stageBorder = Skin.CreateFrame("Frame", viewer, "slot")
     local stageWidth = VIEWER_WIDTH - 2 * PAD
     viewer.stage = ns.CreateBeastStage(viewer, stageWidth, VIEWER_STAGE_HEIGHT)
     viewer.stage.frame:SetPoint("TOP", 0, -PAD)
     viewer.stage:EnableTurning()
-    stageBorder:SetPoint("TOPLEFT", viewer.stage.frame, "TOPLEFT", -4, 4)
-    stageBorder:SetPoint("BOTTOMRIGHT", viewer.stage.frame, "BOTTOMRIGHT", 4, -4)
+    Skin.FrameStage(viewer, viewer.stage)
 
     local hint = viewer:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     hint:SetPoint("TOPLEFT", viewer.stage.frame, "BOTTOMLEFT", 0, -4)
@@ -255,7 +251,7 @@ local function CreateViewer()
     viewer.note:SetPoint("RIGHT", -PAD, 0)
     viewer.note:SetJustifyH("LEFT")
 
-    local box = Skin.CreateFrame("Frame", viewer, "panel")
+    local box = Skin.CreateInset(viewer)
     box:SetPoint("BOTTOMLEFT", PAD, PAD + 26)
     box:SetPoint("BOTTOMRIGHT", -PAD, PAD + 26)
     box:SetHeight(64)
@@ -384,7 +380,10 @@ end
 local function BuildPages(family)
     local rows = {}
     for _, group in ipairs(family and family.models or {}) do
-        table.insert(rows, { kind = "header", group = group, height = GROUP_HEADER_HEIGHT })
+        local single = #family.models == 1 and group.name == family.name
+        if not single then
+            table.insert(rows, { kind = "header", group = group, height = GROUP_HEADER_HEIGHT })
+        end
         for first = 1, #group.looks, COLUMNS do
             local looks = {}
             for i = first, math.min(first + COLUMNS - 1, #group.looks) do
@@ -694,7 +693,9 @@ local function CreateWindow()
 
     -- Header, starting right of the native window's round portrait (the
     -- portrait is drawn on the window, so a panel over it would hide it).
-    local header = Skin.CreateFrame("Frame", frame, "panel")
+    -- Native windows put header text straight on the window; the fallback
+    -- dialog gets a panel.
+    local header = native and CreateFrame("Frame", nil, frame) or Skin.CreateFrame("Frame", frame, "panel")
     header:SetPoint("TOPLEFT", INSET.left + (native and 56 or 0), -TITLE_HEIGHT)
     header:SetPoint("TOPRIGHT", -INSET.right, -TITLE_HEIGHT)
     header:SetHeight(HEADER_HEIGHT)
@@ -717,7 +718,7 @@ local function CreateWindow()
     end
 
     -- Sidebar
-    frame.sidebar = Skin.CreateFrame("Frame", frame, "panel")
+    frame.sidebar = Skin.CreateInset(frame)
     frame.sidebar:SetPoint("TOPLEFT", INSET.left, -BODY_TOP)
     frame.sidebar:SetPoint("BOTTOMLEFT", INSET.left, INSET.bottom)
     frame.sidebar:SetWidth(SIDEBAR_WIDTH)
@@ -726,7 +727,7 @@ local function CreateWindow()
     familiesTitle:SetText("FAMILIES")
 
     -- Content
-    local content = Skin.CreateFrame("Frame", frame, "panel")
+    local content = Skin.CreateInset(frame)
     content:SetPoint("TOPLEFT", INSET.left + SIDEBAR_WIDTH, -BODY_TOP)
     content:SetPoint("BOTTOMRIGHT", -(INSET.right + VIEWER_WIDTH), INSET.bottom)
     frame.familyTitle = content:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
