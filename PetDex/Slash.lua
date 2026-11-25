@@ -5,6 +5,7 @@ local TOGGLES = {
     tooltip = "Tooltip status",
     announce = "Chat announcements",
     toasts = "Discovery popups",
+    mouseover = "Documenting beasts on mouseover",
     debug = "Debug output",
 }
 
@@ -27,9 +28,11 @@ local function PrintHelp()
     ns:Print("v" .. ns.version .. " commands:")
     print("  /petdex - open or close the dex")
     print("  /petdex status - collection summary in chat")
-    print("  /petdex tooltip | announce | toasts | debug - toggle a setting")
+    print("  /petdex tooltip | announce | toasts | mouseover | debug - toggle a setting")
     print("  /petdex probe [unit] - debug: test reading a unit's model (default target)")
     print("  /petdex lab [displayID | npc:<id>] - debug: model lab window (default target)")
+    print("  /petdex minimap - show or hide the minimap button")
+    print("  /petdex testtoast [rare | unique | tamed] - preview a discovery popup")
     print("  /petdex clearseen - forget all sightings (seen, not tamed); tames are kept")
     print("  /petdex reset - wipe all collection data")
 end
@@ -46,6 +49,12 @@ SlashCmdList.PETDEX = function(message)
         ns:ProbeModel(argument)
     elseif command == "lab" then
         ns:OpenModelLab(argument)
+    elseif command == "testtoast" then
+        ns:TestToast(argument)
+    elseif command == "minimap" then
+        ns.db.settings.minimap = not ns.db.settings.minimap
+        ns:UpdateMinimapButton()
+        ns:Print("Minimap button", ns.db.settings.minimap and "|cff40ff40shown|r" or "|cffff4040hidden|r")
     elseif command == "clearseen" then
         -- Forget sightings (seen but never tamed) and unconfirmed discoveries;
         -- tames are kept.

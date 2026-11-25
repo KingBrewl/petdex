@@ -89,6 +89,8 @@ local DEFAULT_SETTINGS = {
     tooltip = true,  -- add PetDex status to beast tooltips
     announce = true, -- chat message for new tames and first rare sightings
     toasts = true,   -- popup when a beast is documented or tamed
+    mouseover = false, -- document beasts on mouseover too, not just on target
+    minimap = true,  -- show the minimap button
     debug = false,
 }
 

@@ -76,8 +76,14 @@ local function ObserveUnit(unit)
     end
 end
 
+-- Documenting a beast takes targeting it. Mousing over one only counts with
+-- /petdex mouseover, since hovering is too easy to do by accident.
 ns:On("PLAYER_TARGET_CHANGED", function() ObserveUnit("target") end)
-ns:On("UPDATE_MOUSEOVER_UNIT", function() ObserveUnit("mouseover") end)
+ns:On("UPDATE_MOUSEOVER_UNIT", function()
+    if ns.db.settings.mouseover then
+        ObserveUnit("mouseover")
+    end
+end)
 
 ---------------------------------------------------------------------------
 -- Owned pets

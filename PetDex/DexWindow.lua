@@ -19,10 +19,19 @@ local TILE_GAP = 10
 local GROUP_HEADER_HEIGHT = 26
 local PAGER_HEIGHT = 36
 
-local CONTENT_WIDTH = WIDTH - SIDEBAR_WIDTH - VIEWER_WIDTH
-local COLUMNS = math.floor((CONTENT_WIDTH - 2 * PAD + TILE_GAP) / (TILE_WIDTH + TILE_GAP))
 local CONTENT_TOP = PAD + 30 -- below the family title
-local CONTENT_HEIGHT = HEIGHT - BODY_TOP - CONTENT_TOP - PAGER_HEIGHT -- room for rows
+local MIN_WIDTH, MIN_HEIGHT = 880, 560
+local MAX_WIDTH, MAX_HEIGHT = 2000, 1300
+
+-- The grid area follows the window size (see UpdateMetrics).
+local CONTENT_WIDTH, CONTENT_HEIGHT, COLUMNS
+
+local function UpdateMetrics(width, height)
+    CONTENT_WIDTH = width - SIDEBAR_WIDTH - VIEWER_WIDTH
+    CONTENT_HEIGHT = height - BODY_TOP - CONTENT_TOP - PAGER_HEIGHT -- room for rows
+    COLUMNS = math.max(1, math.floor((CONTENT_WIDTH - 2 * PAD + TILE_GAP) / (TILE_WIDTH + TILE_GAP)))
+end
+UpdateMetrics(WIDTH, HEIGHT)
 
 local GOLD = { 0.79, 0.64, 0.36 }
 local DIM = { 0.23, 0.24, 0.27 }
@@ -414,6 +423,7 @@ local function ShowPage()
             local header = GetHeader(headerIndex)
             header:ClearAllPoints()
             header:SetPoint("TOPLEFT", PAD, -y)
+            header:SetWidth(CONTENT_WIDTH - 2 * PAD)
             header.title:SetText(row.group.name)
             header.count:SetText(("%d/%d documented  ·  %d tamed"):format(
                 row.group.seen, row.group.total, row.group.tamed))
@@ -561,10 +571,62 @@ end
 ---------------------------------------------------------------------------
 -- Window
 ---------------------------------------------------------------------------
+-- Size and position are remembered in ns.db.settings.window.
+local function SaveGeometry()
+    local point, _, relativePoint, x, y = frame:GetPoint()
+    ns.db.settings.window = {
+        width = math.floor(frame:GetWidth() + 0.5), height = math.floor(frame:GetHeight() + 0.5),
+        point = point, relativePoint = relativePoint, x = x, y = y,
+    }
+end
+
+local function RestoreGeometry()
+    local saved = ns.db.settings.window
+    local width = saved and saved.width or WIDTH
+    local height = saved and saved.height or HEIGHT
+    frame:SetSize(math.max(MIN_WIDTH, math.min(MAX_WIDTH, width)), math.max(MIN_HEIGHT, math.min(MAX_HEIGHT, height)))
+    frame:ClearAllPoints()
+    if saved and saved.point then
+        frame:SetPoint(saved.point, UIParent, saved.relativePoint, saved.x, saved.y)
+    else
+        frame:SetPoint("CENTER")
+    end
+    UpdateMetrics(frame:GetWidth(), frame:GetHeight())
+end
+
+-- After a resize: new column count and page size, same family and look.
+local function Relayout()
+    UpdateMetrics(frame:GetWidth(), frame:GetHeight())
+    if selectedFamily then
+        SelectFamily(selectedFamily, true, selectedLook and selectedLook.lookID)
+    end
+end
+
+local function CreateResizeGrip()
+    frame:SetResizable(true)
+    if frame.SetResizeBounds then
+        frame:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT, MAX_WIDTH, MAX_HEIGHT)
+    else
+        pcall(frame.SetMinResize, frame, MIN_WIDTH, MIN_HEIGHT)
+        pcall(frame.SetMaxResize, frame, MAX_WIDTH, MAX_HEIGHT)
+    end
+    local grip = CreateFrame("Button", nil, frame)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", -2, 2)
+    grip:SetFrameLevel(frame:GetFrameLevel() + 20)
+    grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    grip:SetScript("OnMouseDown", function() frame:StartSizing("BOTTOMRIGHT") end)
+    grip:SetScript("OnMouseUp", function()
+        frame:StopMovingOrSizing()
+        SaveGeometry()
+        Relayout()
+    end)
+end
+
 local function CreateWindow()
     frame = CreateFrame("Frame", "PetDexFrame", UIParent)
-    frame:SetSize(WIDTH, HEIGHT)
-    frame:SetPoint("CENTER")
     frame:SetFrameStrata("DIALOG") -- above action bars and unit frames
     frame:SetToplevel(true)
     frame:SetMovable(true)
@@ -572,10 +634,15 @@ local function CreateWindow()
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetScript("OnDragStop", function()
+        frame:StopMovingOrSizing()
+        SaveGeometry()
+    end)
     table.insert(UISpecialFrames, "PetDexFrame") -- Escape closes it
+    RestoreGeometry()
     Fill(frame, 0.06, 0.065, 0.08, 1)
     AddBorder(frame, GOLD)
+    CreateResizeGrip()
 
     -- Title bar
     local titleBar = CreateFrame("Frame", nil, frame)
@@ -645,7 +712,7 @@ local function CreateWindow()
 
     frame.content = CreateFrame("Frame", nil, content)
     frame.content:SetPoint("TOPLEFT", 0, -CONTENT_TOP)
-    frame.content:SetSize(CONTENT_WIDTH, CONTENT_HEIGHT)
+    frame.content:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, PAGER_HEIGHT)
 
     frame.prevButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
     frame.prevButton:SetSize(80, 22)

@@ -14,6 +14,7 @@ Tooltip.lua
 BeastStage.lua
 DexWindow.lua
 Toast.lua
+MinimapButton.lua
 Probe.lua
 ModelLab.lua
 Slash.lua

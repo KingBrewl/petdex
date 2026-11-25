@@ -39,16 +39,23 @@ local function SetBorderColor(lines, color)
     end
 end
 
+-- The game's own reward sounds, best first per tier; the first one this
+-- client's SOUNDKIT knows is played. Bigger finds, bigger sounds.
+local SOUNDS = {
+    seen = { "UI_LOOT_TOAST_LESSER_ITEM_WON_01", "UI_EPICLOOT_TOAST", "IG_QUEST_LIST_COMPLETE" },
+    rare = { "UI_EPICLOOT_TOAST", "UI_LEGENDARY_LOOT_TOAST", "IG_QUEST_LIST_COMPLETE" },
+    tamed = { "UI_LEGENDARY_LOOT_TOAST", "UI_EPICLOOT_TOAST", "LEVELUPSOUND", "IG_QUEST_LIST_COMPLETE" },
+}
+
 local function PlayToastSound(kind, rarity)
     if not PlaySound or not SOUNDKIT then return end
-    local sound
-    if kind == "tamed" or rarity ~= "common" then
-        sound = SOUNDKIT.IG_QUEST_LIST_COMPLETE
-    else
-        sound = SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
-    end
-    if sound then
-        pcall(PlaySound, sound)
+    local tier = kind == "tamed" and "tamed" or (rarity ~= "common" and "rare" or "seen")
+    for _, key in ipairs(SOUNDS[tier]) do
+        local sound = SOUNDKIT[key]
+        if sound and pcall(PlaySound, sound, "SFX") then
+            ns:Debug("toast sound", tier, key)
+            return
+        end
     end
 end
 
@@ -160,6 +167,26 @@ ShowNext = function()
     toast:SetAlpha(1)
     toast:Show()
     PlayToastSound(entry.kind, info.rarity)
+end
+
+-- /petdex testtoast [rare|unique|tamed]: preview a toast and its sound with
+-- a random beast of that rarity, without touching the collection.
+function ns:TestToast(kind)
+    local rarity = (kind == "rare" or kind == "unique") and kind or "common"
+    local picks = {}
+    self:ForEachLook(function(lookID, look)
+        if look and look.rarity == rarity then
+            picks[#picks + 1] = lookID
+        end
+    end)
+    if #picks == 0 then
+        self:Print("No beast of that rarity to show.")
+        return
+    end
+    table.insert(queue, { lookID = picks[math.random(#picks)], kind = kind == "tamed" and "tamed" or "seen" })
+    if not current then
+        ShowNext()
+    end
 end
 
 -- Called by Collection.lua. kind: "seen" (newly documented) or "tamed".
