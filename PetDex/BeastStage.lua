@@ -21,6 +21,7 @@ local POLL = 0.1
 local LOAD_TIMEOUT = 3
 local LIGHT = { ambient = 0.35, diffuse = 0.55 } -- "soft", picked in game
 local GHOST_ALPHA = 0.3
+local BEAM_WIDTHS = { 0.65, 0.5, 0.36 } -- of the stage width, widest first
 
 local WARM = { 1, 0.89, 0.69 }
 local GOLD = { 0.79, 0.64, 0.36 }
@@ -51,15 +52,24 @@ local function SetVerticalGradient(texture, bottom, top)
     texture:SetColorTexture(top[1], top[2], top[3], (top[4] + bottom[4]) / 2)
 end
 
--- A soft ellipse: stacked circle-masked textures with low alpha each.
--- Returns the textures so they can be recoloured and shown or hidden.
-local function CreateGlow(frame, steps, width, height, y)
-    local glow = {}
-    for i = 1, steps do
-        local scale = 1 - (i - 1) * (0.85 / steps)
-        local texture = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
+-- Size and place a glow: an ellipse width x height centred y above the
+-- stage's bottom edge.
+local function LayoutGlow(glow, width, height, y)
+    for i, texture in ipairs(glow) do
+        local scale = 1 - (i - 1) * (0.85 / #glow)
         texture:SetSize(width * scale, height * scale)
-        texture:SetPoint("CENTER", frame, "BOTTOM", 0, y)
+        texture:ClearAllPoints()
+        texture:SetPoint("CENTER", glow.frame, "BOTTOM", 0, y)
+    end
+end
+
+-- A soft ellipse: stacked circle-masked textures with low alpha each.
+-- Returns the textures so they can be recoloured, shown or hidden, and laid
+-- out again with LayoutGlow.
+local function CreateGlow(frame, steps)
+    local glow = { frame = frame }
+    for i = 1, steps do
+        local texture = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
         if frame.CreateMaskTexture then
             local mask = frame:CreateMaskTexture()
             mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
@@ -225,17 +235,17 @@ function ns.CreateBeastStage(parent, width, height)
 
     -- Spotlight: nested beams of falling width soften the edges.
     self.beams = {}
-    for i, widthScale in ipairs({ 0.65, 0.5, 0.36 }) do
+    for i = 1, #BEAM_WIDTHS do
         local beam = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
         beam:SetPoint("TOP")
-        beam:SetSize(width * widthScale, height * (0.75 + i * 0.05))
         self.beams[i] = beam
     end
 
     -- More, fainter layers blend into a smoother glow; big stages need more.
     local steps = width >= 200 and 24 or 12
-    self.floorGlow = CreateGlow(frame, steps, width * 0.8, math.max(16, height * 0.16), height * 0.22)
-    self.backGlow = CreateGlow(frame, steps, width * 0.85, height * 0.7, height * 0.5)
+    self.floorGlow = CreateGlow(frame, steps)
+    self.backGlow = CreateGlow(frame, steps)
+    self:SetStageSize(width, height)
 
     local model = CreateFrame("PlayerModel", nil, frame)
     model:SetAllPoints()
@@ -252,6 +262,16 @@ function ns.CreateBeastStage(parent, width, height)
     self.missing:SetText("?")
     self.missing:Hide()
     return self
+end
+
+-- Resize the stage and its spotlight and glows (the model fills the frame).
+function Stage:SetStageSize(width, height)
+    self.frame:SetSize(width, height)
+    for i, beam in ipairs(self.beams) do
+        beam:SetSize(width * BEAM_WIDTHS[i], height * (0.75 + i * 0.05))
+    end
+    LayoutGlow(self.floorGlow, width * 0.8, math.max(16, height * 0.16), height * 0.22)
+    LayoutGlow(self.backGlow, width * 0.85, height * 0.7, height * 0.5)
 end
 
 -- Backdrop, beam and glows for a state; rarity colours the tamed floor glow.

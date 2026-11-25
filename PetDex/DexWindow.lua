@@ -11,7 +11,10 @@ local TITLE_HEIGHT, HEADER_HEIGHT = 34, 50
 local SIDEBAR_WIDTH, VIEWER_WIDTH = 180, 320
 local BODY_TOP = TITLE_HEIGHT + HEADER_HEIGHT
 local PAD = 16
-local FAMILY_HEIGHT = 30
+local FAMILY_HEIGHT_MAX, FAMILY_HEIGHT_MIN = 30, 20
+local FAMILY_LIST_TOP = 40 -- below the "FAMILIES" label
+local VIEWER_STAGE_MAX, VIEWER_STAGE_MIN = 260, 140
+local VIEWER_BELOW_STAGE = 260 -- room for the text and record box under the stage
 
 local TILE_WIDTH, STAGE_HEIGHT = 124, 108
 local TILE_HEIGHT = STAGE_HEIGHT + 34
@@ -25,11 +28,24 @@ local MAX_WIDTH, MAX_HEIGHT = 2000, 1300
 
 -- The grid area follows the window size (see UpdateMetrics).
 local CONTENT_WIDTH, CONTENT_HEIGHT, COLUMNS
+local BODY_HEIGHT, VIEWER_STAGE_HEIGHT
 
 local function UpdateMetrics(width, height)
     CONTENT_WIDTH = width - SIDEBAR_WIDTH - VIEWER_WIDTH
     CONTENT_HEIGHT = height - BODY_TOP - CONTENT_TOP - PAGER_HEIGHT -- room for rows
     COLUMNS = math.max(1, math.floor((CONTENT_WIDTH - 2 * PAD + TILE_GAP) / (TILE_WIDTH + TILE_GAP)))
+    BODY_HEIGHT = height - BODY_TOP
+    -- The viewer's stage gives up height first, so its text never overlaps
+    -- the record box in a short window.
+    VIEWER_STAGE_HEIGHT = math.max(VIEWER_STAGE_MIN,
+        math.min(VIEWER_STAGE_MAX, BODY_HEIGHT - PAD - VIEWER_BELOW_STAGE))
+end
+
+-- Family rows shrink to fit every family in the sidebar.
+local function FamilyRowHeight(count)
+    local available = BODY_HEIGHT - FAMILY_LIST_TOP - 10
+    local height = math.floor(available / math.max(1, count))
+    return math.max(FAMILY_HEIGHT_MIN, math.min(FAMILY_HEIGHT_MAX, height))
 end
 UpdateMetrics(WIDTH, HEIGHT)
 
@@ -235,7 +251,7 @@ local function CreateViewer()
     divider:SetPoint("BOTTOMLEFT")
 
     local stageWidth = VIEWER_WIDTH - 2 * PAD
-    viewer.stage = ns.CreateBeastStage(viewer, stageWidth, 260)
+    viewer.stage = ns.CreateBeastStage(viewer, stageWidth, VIEWER_STAGE_HEIGHT)
     viewer.stage.frame:SetPoint("TOP", 0, -PAD)
     viewer.stage:EnableTurning()
     AddBorder(viewer.stage.frame, { 0.35, 0.29, 0.17 })
@@ -468,8 +484,7 @@ local function GetFamilyButton(index)
     local button = familyButtons[index]
     if button then return button end
     button = CreateFrame("Button", nil, frame.sidebar)
-    button:SetSize(SIDEBAR_WIDTH - 2 * 10, FAMILY_HEIGHT - 2)
-    button:SetPoint("TOPLEFT", 10, -40 - (index - 1) * FAMILY_HEIGHT)
+    button:SetWidth(SIDEBAR_WIDTH - 2 * 10)
     button.selected = Fill(button, 0.16, 0.14, 0.09, 1)
     button.border = AddBorder(button, GOLD)
     local highlight = button:CreateTexture(nil, "HIGHLIGHT")
@@ -495,8 +510,12 @@ local function GetFamilyButton(index)
 end
 
 local function UpdateFamilyButtons()
+    local rowHeight = FamilyRowHeight(#families)
     for index, family in ipairs(families) do
         local button = GetFamilyButton(index)
+        button:SetHeight(rowHeight - 2)
+        button:ClearAllPoints()
+        button:SetPoint("TOPLEFT", 10, -FAMILY_LIST_TOP - (index - 1) * rowHeight)
         button.family = family
         button.label:SetText(family.name)
         button.count:SetText(("%d/%d"):format(family.seen, family.total))
@@ -597,6 +616,8 @@ end
 -- After a resize: new column count and page size, same family and look.
 local function Relayout()
     UpdateMetrics(frame:GetWidth(), frame:GetHeight())
+    viewer.stage:SetStageSize(VIEWER_WIDTH - 2 * PAD, VIEWER_STAGE_HEIGHT)
+    if viewer.stage.size then viewer.stage:Fit() end
     if selectedFamily then
         SelectFamily(selectedFamily, true, selectedLook and selectedLook.lookID)
     end
