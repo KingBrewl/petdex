@@ -238,12 +238,6 @@ local function WhereLines(info, lines, state)
     end
 end
 
-local function FindGroup(family, modelName)
-    for _, group in ipairs(family and family.models or {}) do
-        if group.name == modelName then return group end
-    end
-end
-
 local function UpdateViewer()
     local info = selectedLook
     if not info then
@@ -251,7 +245,6 @@ local function UpdateViewer()
         viewer.name:SetText("")
         viewer.info:SetText("")
         viewer.record:SetText("")
-        viewer.group:SetText("")
         viewer.pin:Hide()
         return
     end
@@ -312,9 +305,6 @@ local function UpdateViewer()
     end
     viewer.record:SetText(recordText)
 
-    local group = FindGroup(selectedFamily, info.model)
-    viewer.group:SetText(group and ("%s: %d / %d documented, %d tamed"):format(
-        group.name, group.seen, group.total, group.tamed) or "")
 end
 
 local function CreateViewer()
@@ -377,10 +367,6 @@ local function CreateViewer()
     viewer.record:SetPoint("RIGHT", -10, 0)
     viewer.record:SetJustifyH("LEFT")
 
-    viewer.group = viewer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    viewer.group:SetPoint("BOTTOMLEFT", PAD, PAD + 6)
-    viewer.group:SetPoint("RIGHT", viewer.pin, "LEFT", -6, 0)
-    viewer.group:SetJustifyH("LEFT")
 end
 
 ---------------------------------------------------------------------------

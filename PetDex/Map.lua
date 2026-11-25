@@ -30,16 +30,18 @@ local function MapName(uiMapID)
     return info and info.name
 end
 
--- The zone a map belongs to: caves, sub-areas and other maps below zone
--- level are walked up to their zone, so "your zone" and a beast's zone
--- compare by the same name.
+-- The zone a map belongs to, so "your zone" and a beast's zone compare by
+-- the same name. Walks up through caves and sub-areas, and through cities
+-- that sit inside a zone (Thunder Bluff is a zone-type map inside
+-- Mulgore, and its map covers the land around it), stopping below the
+-- continent.
 local ZONE_TYPE = Enum and Enum.UIMapType and Enum.UIMapType.Zone or 3
 function ns:ZoneMapID(uiMapID)
     local info = uiMapID and C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(uiMapID)
     local steps = 0
-    while info and info.mapType and info.mapType > ZONE_TYPE and info.parentMapID and info.parentMapID > 0 and steps < 5 do
+    while info and info.parentMapID and info.parentMapID > 0 and steps < 5 do
         local parent = C_Map.GetMapInfo(info.parentMapID)
-        if not parent or (parent.mapType and parent.mapType < ZONE_TYPE) then break end
+        if not parent or not parent.mapType or parent.mapType < ZONE_TYPE then break end
         info = parent
         steps = steps + 1
     end
