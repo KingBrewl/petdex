@@ -59,6 +59,18 @@ local ANIMATIONS = { 0, 4, 5, 16 } -- stand, walk, run, attack
 local TAMED_ICON = "Interface\\Icons\\Ability_Hunter_BeastTaming"
 local Skin = ns.Skin
 
+-- Tabs along the bottom, like Blizzard's windows. The Dex view is built
+-- here; other views register in ns.DexViews[key] = { Create(parent),
+-- Refresh(view) } from their own files.
+local TABS = {
+    { key = "overview", label = "Overview" },
+    { key = "dex", label = "Dex" },
+    { key = "hunt", label = "Hunt" },
+}
+ns.DexViews = ns.DexViews or {}
+local views = {}
+local currentTab
+
 local frame
 local families = {}
 local selectedFamily, selectedLook
@@ -306,7 +318,7 @@ local function UpdateViewer()
 end
 
 local function CreateViewer()
-    viewer = Skin.CreateInset(frame)
+    viewer = Skin.CreateInset(views.dex)
     viewer:SetPoint("TOPRIGHT", -INSET.right, -BODY_TOP)
     viewer:SetPoint("BOTTOMRIGHT", -INSET.right, INSET.bottom)
     viewer:SetWidth(VIEWER_WIDTH)
@@ -657,12 +669,21 @@ SelectFamily = function(family, keepPage, focusLookID)
     SelectLook(keep or first)
 end
 
--- Rebuild from the collection, keeping the current family, page and look,
--- or jumping to focusLookID.
-local function Refresh(focusLookID)
+-- Rebuild from the collection: the header, then the current tab. On the
+-- Dex, keep the current family, page and look, or jump to focusLookID or
+-- focusFamily (a family name).
+local function Refresh(focusLookID, focusFamily)
     families = ns:GetDexFamilies()
+    if currentTab ~= "dex" then
+        UpdateHeader()
+        local view, spec = views[currentTab], ns.DexViews[currentTab]
+        if view and spec and spec.Refresh then
+            spec.Refresh(view)
+        end
+        return
+    end
     local family = families[1]
-    local wantedFamily = selectedFamily and selectedFamily.name
+    local wantedFamily = focusFamily or (selectedFamily and selectedFamily.name)
     if focusLookID then
         local look = ns:GetLookInfo(focusLookID)
         wantedFamily = look and look.family or wantedFamily
@@ -673,7 +694,8 @@ local function Refresh(focusLookID)
         end
     end
     UpdateHeader()
-    SelectFamily(family, true, focusLookID)
+    -- A family opened from another tab starts on its first page.
+    SelectFamily(family, not focusFamily, focusLookID)
 end
 
 ---------------------------------------------------------------------------
@@ -705,6 +727,10 @@ end
 -- After a resize: new column count and page size, same family and look.
 local function Relayout()
     UpdateMetrics(frame:GetWidth(), frame:GetHeight())
+    if currentTab and currentTab ~= "dex" then
+        Refresh()
+        return
+    end
     viewer.stage:SetStageSize(VIEWER_WIDTH - 2 * PAD, VIEWER_STAGE_HEIGHT)
     if viewer.stage.size then viewer.stage:Fit() end
     if selectedFamily then
@@ -764,6 +790,69 @@ local function CreateWindowFrame()
     return plain, false
 end
 
+local ShowTab
+
+local function CreateTabs()
+    frame.tabs = {}
+    local blizzardTabs = true
+    for index, tab in ipairs(TABS) do
+        local name = "PetDexFrameTab" .. index
+        local ok, button = pcall(CreateFrame, "Button", name, frame, "PanelTabButtonTemplate")
+        if not ok then
+            ok, button = pcall(CreateFrame, "Button", name, frame, "CharacterFrameTabButtonTemplate")
+        end
+        if not ok then
+            blizzardTabs = false
+            button = CreateFrame("Button", name, frame, "UIPanelButtonTemplate")
+            button:SetSize(96, 24)
+        end
+        button:SetID(index)
+        button:SetText(tab.label)
+        if blizzardTabs and PanelTemplates_TabResize then
+            pcall(PanelTemplates_TabResize, button, 0)
+        end
+        if index == 1 then
+            button:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 12, blizzardTabs and 2 or -2)
+        else
+            -- Blizzard's tab art overlaps its neighbours.
+            button:SetPoint("LEFT", frame.tabs[index - 1], "RIGHT", blizzardTabs and -14 or 4, 0)
+        end
+        button:SetScript("OnClick", function()
+            if currentTab ~= tab.key then
+                Skin.PlaySound("tab")
+            end
+            ShowTab(tab.key)
+        end)
+        frame.tabs[index] = button
+    end
+    frame.numTabs = #TABS
+    if blizzardTabs and PanelTemplates_SetNumTabs then
+        pcall(PanelTemplates_SetNumTabs, frame, #TABS)
+    end
+end
+
+-- Show one tab's view (built on first use) and refresh it.
+ShowTab = function(key, focusLookID, focusFamily)
+    currentTab = key
+    ns.db.settings.tab = key
+    if not views[key] then
+        local spec = ns.DexViews[key]
+        if spec and spec.Create then
+            views[key] = spec.Create(frame)
+            views[key]:SetAllPoints()
+        end
+    end
+    for viewKey, view in pairs(views) do
+        view:SetShown(viewKey == key)
+    end
+    for index, tab in ipairs(TABS) do
+        if tab.key == key and PanelTemplates_SetTab then
+            pcall(PanelTemplates_SetTab, frame, index)
+        end
+    end
+    Refresh(focusLookID, focusFamily)
+end
+
 local function CreateWindow()
     local native
     frame, native = CreateWindowFrame()
@@ -821,8 +910,12 @@ local function CreateWindow()
         previous = label
     end
 
+    -- The Dex view: family list, grid and viewer.
+    views.dex = CreateFrame("Frame", nil, frame)
+    views.dex:SetAllPoints()
+
     -- Sidebar
-    frame.sidebar = Skin.CreateInset(frame)
+    frame.sidebar = Skin.CreateInset(views.dex)
     frame.sidebar:SetPoint("TOPLEFT", INSET.left, -BODY_TOP)
     frame.sidebar:SetPoint("BOTTOMLEFT", INSET.left, INSET.bottom)
     frame.sidebar:SetWidth(SIDEBAR_WIDTH)
@@ -831,7 +924,7 @@ local function CreateWindow()
     familiesTitle:SetText("FAMILIES")
 
     -- Content
-    local content = Skin.CreateInset(frame)
+    local content = Skin.CreateInset(views.dex)
     content:SetPoint("TOPLEFT", INSET.left + SIDEBAR_WIDTH, -BODY_TOP)
     content:SetPoint("BOTTOMRIGHT", -(INSET.right + VIEWER_WIDTH), INSET.bottom)
     frame.familyTitle = content:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -869,9 +962,10 @@ local function CreateWindow()
         end)
     end)
 
+    CreateTabs()
     frame:SetScript("OnShow", function()
         Skin.PlaySound("open")
-        Refresh()
+        ShowTab(currentTab or ns.db.settings.tab or "overview")
     end)
     frame:SetScript("OnHide", function() Skin.PlaySound("close") end)
 end
@@ -882,6 +976,15 @@ function ns:OnCollectionChanged()
         Refresh()
     end
 end
+
+-- Layout and helpers the other views share with the Dex.
+ns.DexUI = {
+    BODY_TOP = BODY_TOP,
+    INSET = INSET, -- filled in when the window is built
+    PAD = PAD,
+    LevelText = function(beast) return LevelText(beast) end,
+    RARITY_LABELS = RARITY_LABELS,
+}
 
 function ns:HideDex()
     if frame then frame:Hide() end
@@ -895,21 +998,30 @@ function ns:ToggleDex()
     frame:SetShown(not frame:IsShown())
 end
 
--- Open the dex on one look (from a toast).
-function ns:OpenDexAt(lookID)
+-- Show the window on a tab, without the usual OnShow refresh first.
+local function OpenOn(key, focusLookID, focusFamily)
     if not frame then
         CreateWindow()
         frame:Hide()
     end
     if frame:IsShown() then
-        Refresh(lookID)
-    else
-        -- Show without the usual refresh, then refresh onto the look.
-        local onShow = frame:GetScript("OnShow")
-        frame:SetScript("OnShow", nil)
-        frame:Show()
-        frame:SetScript("OnShow", onShow)
-        Skin.PlaySound("open")
-        Refresh(lookID)
+        ShowTab(key, focusLookID, focusFamily)
+        return
     end
+    local onShow = frame:GetScript("OnShow")
+    frame:SetScript("OnShow", nil)
+    frame:Show()
+    frame:SetScript("OnShow", onShow)
+    Skin.PlaySound("open")
+    ShowTab(key, focusLookID, focusFamily)
+end
+
+-- Open the dex on one look (from a toast or the other tabs).
+function ns:OpenDexAt(lookID)
+    OpenOn("dex", lookID)
+end
+
+-- Open the Dex tab on a family (from the Overview).
+function ns:OpenDexFamily(familyName)
+    OpenOn("dex", nil, familyName)
 end

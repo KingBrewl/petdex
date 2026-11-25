@@ -30,10 +30,33 @@ local function MapName(uiMapID)
     return info and info.name
 end
 
+-- The zone a map belongs to: caves, sub-areas and other maps below zone
+-- level are walked up to their zone, so "your zone" and a beast's zone
+-- compare by the same name.
+local ZONE_TYPE = Enum and Enum.UIMapType and Enum.UIMapType.Zone or 3
+function ns:ZoneMapID(uiMapID)
+    local info = uiMapID and C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(uiMapID)
+    local steps = 0
+    while info and info.mapType and info.mapType > ZONE_TYPE and info.parentMapID and info.parentMapID > 0 and steps < 5 do
+        local parent = C_Map.GetMapInfo(info.parentMapID)
+        if not parent or (parent.mapType and parent.mapType < ZONE_TYPE) then break end
+        info = parent
+        steps = steps + 1
+    end
+    return info and info.mapID or uiMapID
+end
+
+-- The name of the zone the player is in (zone level).
+function ns:GetPlayerZone()
+    local uiMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+    local name = uiMapID and MapName(self:ZoneMapID(uiMapID))
+    return name or (GetZoneText and GetZoneText()) or nil
+end
+
 -- Zone name from a spawn point, or the instance's name for dungeons/raids.
 function ns:ZoneFromSpawn(beast)
     local uiMapID = self:GetSpawnMapPosition(beast)
-    local name = uiMapID and MapName(uiMapID)
+    local name = uiMapID and MapName(self:ZoneMapID(uiMapID))
     if not name and beast.map and beast.map ~= 0 and beast.map ~= 1 and GetRealZoneText then
         local ok, text = pcall(GetRealZoneText, beast.map)
         if ok and text and text ~= "" then

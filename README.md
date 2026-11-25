@@ -23,7 +23,9 @@ New-Item -ItemType Junction `
 | `Tracking.lua` | Sightings, tame detection, active pet and stable backfill |
 | `Skin.lua` | Native look and sound: game backdrops, bars, page buttons and UI sounds |
 | `BeastStage.lua` | A beast's 3D model on a lit stage in its dex state (tamed, seen, silhouette), auto-framed |
-| `DexWindow.lua` | The dex window (`/petdex`): families, looks grouped by model, and a viewer |
+| `DexWindow.lua` | The PetDex window (`/petdex`): tabs, header, and the Dex tab (families, looks, viewer) |
+| `Views/Overview.lua` | Overview tab: totals, recent discoveries, progress per family |
+| `Views/Hunt.lua` | Hunt tab: checklist of the beasts in your current zone, with map pins |
 | `Toast.lua` | Popup (with sound) when a beast is documented (first seen) or tamed |
 | `MinimapButton.lua` | Minimap button that opens the dex |
 | `Tooltip.lua` | Collection status on beast tooltips |

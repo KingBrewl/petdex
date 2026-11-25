@@ -16,6 +16,8 @@ Tooltip.lua
 Skin.lua
 BeastStage.lua
 DexWindow.lua
+Views\Overview.lua
+Views\Hunt.lua
 Toast.lua
 MinimapButton.lua
 Probe.lua
